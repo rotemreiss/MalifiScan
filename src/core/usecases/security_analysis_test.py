@@ -23,6 +23,7 @@ class TestSecurityAnalysisUseCase:
         service = Mock()
         service.health_check = AsyncMock(return_value=True)
         service.search_packages = AsyncMock(return_value=[])
+        service.get_registry_name = AsyncMock(return_value="JFrog")
         service.close = AsyncMock()
         return service
 
@@ -197,7 +198,9 @@ class TestSecurityAnalysisUseCase:
         match = result["found_matches"][0]
         assert match["package"] == malicious_package
         assert match["matching_versions"] == ["1.0.0"]
-        assert match["all_jfrog_versions"] == ["1.0.0", "2.0.0"]
+        # Test dynamic field name based on registry
+        registry_name = await mock_registry_service.get_registry_name()
+        assert match[f"all_{registry_name.lower()}_versions"] == ["1.0.0", "2.0.0"]
         assert match["malicious_versions"] == ["1.0.0", "1.0.1"]
 
     @pytest.mark.asyncio
@@ -224,7 +227,9 @@ class TestSecurityAnalysisUseCase:
         
         safe_package = result["safe_packages"][0]
         assert safe_package["package"] == malicious_package
-        assert safe_package["jfrog_versions"] == ["2.0.0", "3.0.0"]
+        # Test dynamic field name based on registry
+        registry_name = await mock_registry_service.get_registry_name()
+        assert safe_package[f"{registry_name.lower()}_versions"] == ["2.0.0", "3.0.0"]
         assert safe_package["malicious_versions"] == ["1.0.0", "1.0.1"]
 
     @pytest.mark.asyncio
@@ -314,7 +319,9 @@ class TestSecurityAnalysisUseCase:
         assert len(result["safe_packages"]) == 1  # No versions to match
         
         safe_package = result["safe_packages"][0]
-        assert safe_package["jfrog_versions"] == []  # Empty because no valid versions
+        # Test dynamic field name based on registry
+        registry_name = await mock_registry_service.get_registry_name()
+        assert safe_package[f"{registry_name.lower()}_versions"] == []  # Empty because no valid versions
 
     @pytest.mark.asyncio
     async def test_crossref_analysis_search_exception(self, use_case, mock_packages_feed, mock_registry_service, sample_malicious_package, mock_logger):

@@ -15,9 +15,17 @@ def mock_storage_service():
 
 
 @pytest.fixture
-def scan_results_manager(mock_storage_service):
+def mock_registry_service():
+    """Create a mock registry service."""
+    mock = AsyncMock()
+    mock.get_registry_name.return_value = "JFrog"
+    return mock
+
+
+@pytest.fixture
+def scan_results_manager(mock_storage_service, mock_registry_service):
     """Create a scan results manager with mocked dependencies."""
-    return ScanResultsManager(mock_storage_service)
+    return ScanResultsManager(mock_storage_service, mock_registry_service)
 
 
 @pytest.fixture
@@ -142,13 +150,14 @@ class TestScanResultsManager:
         with pytest.raises(RuntimeError, match="Failed to retrieve scan details"):
             await scan_results_manager.get_scan_details("test-scan-123")
 
-    def test_analyze_scan_results_with_findings(self, scan_results_manager, sample_scan_result, sample_malicious_package):
+    @pytest.mark.asyncio
+    async def test_analyze_scan_results_with_findings(self, scan_results_manager, sample_scan_result, sample_malicious_package):
         """Test analysis of scan results with findings."""
         # Arrange
         findings = [sample_malicious_package]
         
         # Act
-        result = scan_results_manager._analyze_scan_results(sample_scan_result, findings)
+        result = await scan_results_manager._analyze_scan_results(sample_scan_result, findings)
         
         # Assert
         assert "found_matches" in result
@@ -156,13 +165,14 @@ class TestScanResultsManager:
         assert "not_found_count" in result
         assert result["not_found_count"] == 0  # 1 scanned, 1 found = 0 not found
 
-    def test_analyze_scan_results_no_findings(self, scan_results_manager, sample_scan_result):
+    @pytest.mark.asyncio
+    async def test_analyze_scan_results_no_findings(self, scan_results_manager, sample_scan_result):
         """Test analysis of scan results with no findings."""
         # Arrange
         findings = []
         
         # Act
-        result = scan_results_manager._analyze_scan_results(sample_scan_result, findings)
+        result = await scan_results_manager._analyze_scan_results(sample_scan_result, findings)
         
         # Assert
         assert result["found_matches"] == []

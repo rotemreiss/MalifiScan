@@ -36,8 +36,9 @@ from rich.prompt import Prompt, Confirm
 import cmd
 
 # Import our application components
-from src.config import ConfigLoader, Config
-from src.factories import ServiceFactory
+from src.config.config_loader import ConfigLoader
+from src.factories.service_factory import ServiceFactory
+from src.core.entities.registry_package_match import RegistryPackageMatchBuilder
 from src.core.entities import MaliciousPackage, ScanResult, NotificationEvent, NotificationLevel
 from src.core.usecases import SecurityScanner
 from src.main import SecurityScannerApp  # Import the main app class
@@ -140,9 +141,38 @@ class SecurityScannerCLI:
                 
                 return True
         
-        # Apply filter to all handlers
+            # Apply filter to all handlers
         for handler in root_logger.handlers:
             handler.addFilter(CLILogFilter())
+
+    async def _get_registry_name(self) -> str:
+        """Get the display name of the current registry."""
+        try:
+            if self.services and 'registry' in self.services:
+                return await self.services['registry'].get_registry_name()
+            return "Package Registry"  # Fallback
+        except Exception:
+            return "Package Registry"  # Fallback on error
+
+    async def _get_dynamic_field_names(self) -> Dict[str, str]:
+        """Get dynamic field names based on registry type."""
+        try:
+            registry_name = await self._get_registry_name()
+            match_builder = RegistryPackageMatchBuilder(registry_name)
+            dummy_match = match_builder.build_match(None)  # Just for field names
+            
+            return {
+                'all_versions_field': dummy_match.get_all_versions_field_name(),
+                'versions_field': dummy_match.get_versions_field_name(),
+                'results_field': dummy_match.get_results_field_name()
+            }
+        except Exception:
+            # Fallback to hardcoded names if something goes wrong
+            return {
+                'all_versions_field': 'all_jfrog_versions',
+                'versions_field': 'jfrog_versions', 
+                'results_field': 'jfrog_results'
+            }
 
     async def registry_health(self) -> bool:
         """Check package registry health."""
@@ -307,14 +337,18 @@ class SecurityScannerCLI:
             self.console.print("🛡️ SECURITY ANALYSIS RESULTS", style="bold cyan")
             self.console.print("="*80, style="bold")
             
+            # Get registry name and dynamic field names
+            registry_name = await self._get_registry_name()
+            field_names = await self._get_dynamic_field_names()
+            
             if found_matches:
-                self.console.print(f"\n🚨 CRITICAL: {len(found_matches)} malicious packages found in JFrog!", style="bold red")
+                self.console.print(f"\n🚨 CRITICAL: {len(found_matches)} malicious packages found in {registry_name}!", style="bold red")
                 
                 for match in found_matches:
                     pkg = match['package']
                     self.console.print(f"\n❌ {pkg.name}", style="bold red")
                     self.console.print(f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}")
-                    self.console.print(f"   🏗️ JFrog versions: {', '.join(match['all_jfrog_versions'])}")
+                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(match[field_names['all_versions_field']])}")
                     self.console.print(f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
                     if hasattr(pkg, 'package_url'):
                         self.console.print(f"   🔗 Package URL: {pkg.package_url}")
@@ -326,10 +360,10 @@ class SecurityScannerCLI:
                     pkg = safe['package']
                     self.console.print(f"\n🟡 {pkg.name}")
                     self.console.print(f"   📦 Malicious versions: {', '.join(safe['malicious_versions'])}")
-                    self.console.print(f"   🏗️ JFrog versions: {', '.join(safe['jfrog_versions'])} ✅")
+                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(safe[field_names['versions_field']])} ✅")
             
             if not_found_count > 0:
-                self.console.print(f"\n✅ {not_found_count} malicious packages not found in JFrog", style="green")
+                self.console.print(f"\n✅ {not_found_count} malicious packages not found in {registry_name}", style="green")
             
             if errors:
                 self.console.print(f"\n⚠️ {len(errors)} packages had search errors (timeouts/network issues):", style="yellow")
@@ -468,14 +502,18 @@ class SecurityScannerCLI:
             self.console.print("🛡️ SECURITY ANALYSIS RESULTS", style="bold cyan")
             self.console.print("="*80, style="bold")
             
+            # Get registry name and dynamic field names
+            registry_name = await self._get_registry_name()
+            field_names = await self._get_dynamic_field_names()
+            
             if found_matches:
-                self.console.print(f"\n🚨 CRITICAL: {len(found_matches)} malicious packages found in JFrog!", style="bold red")
+                self.console.print(f"\n🚨 CRITICAL: {len(found_matches)} malicious packages found in {registry_name}!", style="bold red")
                 
                 for match in found_matches:
                     pkg = match['package']
                     self.console.print(f"\n❌ {pkg.name}", style="bold red")
                     self.console.print(f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}")
-                    self.console.print(f"   🏗️ JFrog versions: {', '.join(match['all_jfrog_versions'])}")
+                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(match[field_names['all_versions_field']])}")
                     self.console.print(f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
                     if hasattr(pkg, 'package_url') and pkg.package_url:
                         self.console.print(f"   🔗 Package URL: {pkg.package_url}")
@@ -487,10 +525,10 @@ class SecurityScannerCLI:
                     pkg = safe['package']
                     self.console.print(f"\n🟡 {pkg.name}")
                     self.console.print(f"   📦 Malicious versions: {', '.join(safe['malicious_versions'])}")
-                    self.console.print(f"   🏗️ JFrog versions: {', '.join(safe['jfrog_versions'])} ✅")
+                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(safe[field_names['versions_field']])} ✅")
             
             if not_found_count > 0:
-                self.console.print(f"\n✅ {not_found_count} malicious packages not found in JFrog", style="green")
+                self.console.print(f"\n✅ {not_found_count} malicious packages not found in {registry_name}", style="green")
             
             # Summary
             self.console.print(f"\n📊 SUMMARY:", style="bold")
@@ -775,7 +813,7 @@ class SecurityScannerCLI:
             return True
             
         except Exception as e:
-            self.console.print(f"❌ Error fetching from OSV feed: {e}", style="red")
+            self.console.print(f"❌ Error fetching from feed: {e}", style="red")
             return False
 
     async def health_check(self) -> bool:

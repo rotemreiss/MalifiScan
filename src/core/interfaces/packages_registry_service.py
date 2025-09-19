@@ -117,6 +117,16 @@ class PackagesRegistryService(ABC):
         pass
     
     @abstractmethod
+    def get_registry_name(self) -> str:
+        """
+        Get the display name of the registry.
+        
+        Returns:
+            Human-readable name of the registry (e.g., "JFrog Artifactory", "npm Registry")
+        """
+        pass
+    
+    @abstractmethod
     async def close(self) -> None:
         """
         Close the registry connection and cleanup resources.

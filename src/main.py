@@ -141,7 +141,8 @@ class SecurityScannerApp:
             )
             
             self.scan_results_manager = ScanResultsManager(
-                storage_service=self.services["storage_service"]
+                storage_service=self.services["storage_service"],
+                registry_service=self.services["packages_registry"]
             )
             
             self.logger.info("Application initialization complete")

@@ -1,4 +1,4 @@
-"""Security Analysis Use Case for cross-referencing OSV data with JFrog registry."""
+"""Security Analysis Use Case for cross-referencing OSV data with package registry."""
 
 import uuid
 from datetime import datetime, timezone
@@ -7,6 +7,7 @@ import logging
 
 from ..entities.malicious_package import MaliciousPackage
 from ..entities.scan_result import ScanResult, ScanStatus
+from ..entities.registry_package_match import RegistryPackageMatchBuilder
 from ..interfaces.packages_feed import PackagesFeed
 from ..interfaces.packages_registry_service import PackagesRegistryService
 from ..interfaces.storage_service import StorageService
@@ -123,38 +124,40 @@ class SecurityAnalysisUseCase:
             found_matches = []
             safe_packages = []
             
+            # Get registry name for dynamic field naming
+            registry_name = await self.registry_service.get_registry_name()
+            match_builder = RegistryPackageMatchBuilder(registry_name)
+            
             for malicious_pkg in malicious_packages:
                 try:
-                    # Search for this package in JFrog
-                    jfrog_results = await self.registry_service.search_packages(malicious_pkg.name, ecosystem)
+                    # Search for this package in the registry
+                    registry_results = await self.registry_service.search_packages(malicious_pkg.name, ecosystem)
                     
-                    if jfrog_results:
+                    if registry_results:
                         # Check if any versions match
-                        jfrog_versions = [result.get('version', '') for result in jfrog_results if result.get('version')]
+                        registry_versions = [result.get('version', '') for result in registry_results if result.get('version')]
                         malicious_versions = malicious_pkg.affected_versions if hasattr(malicious_pkg, 'affected_versions') else [malicious_pkg.version] if malicious_pkg.version else []
                         
                         # Check for version matches
                         version_matches = []
-                        for jfrog_version in jfrog_versions:
-                            if jfrog_version and jfrog_version in malicious_versions:
-                                version_matches.append(jfrog_version)
+                        for registry_version in registry_versions:
+                            if registry_version and registry_version in malicious_versions:
+                                version_matches.append(registry_version)
+                        
+                        # Create registry package match
+                        package_match = match_builder.build_match(
+                            package=malicious_pkg,
+                            registry_results=registry_results,
+                            matching_versions=version_matches,
+                            all_registry_versions=registry_versions,
+                            malicious_versions=malicious_versions
+                        )
                         
                         if version_matches:
-                            found_matches.append({
-                                'package': malicious_pkg,
-                                'jfrog_results': jfrog_results,
-                                'matching_versions': version_matches,
-                                'all_jfrog_versions': jfrog_versions,
-                                'malicious_versions': malicious_versions
-                            })
+                            found_matches.append(package_match.to_match_dict())
                             self.logger.warning(f"Critical match found: {malicious_pkg.name} versions {version_matches}")
                         else:
-                            safe_packages.append({
-                                'package': malicious_pkg,
-                                'jfrog_results': jfrog_results,
-                                'jfrog_versions': jfrog_versions,
-                                'malicious_versions': malicious_versions
-                            })
+                            safe_packages.append(package_match.to_safe_dict())
                     
                 except Exception as e:
                     self.logger.error(f"Error checking package {malicious_pkg.name}: {e}")

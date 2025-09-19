@@ -1,12 +1,21 @@
-"""Scan Results Use Case for retrieving and managing scan results."""
+"""
+Scan Results Management Use Case.
 
-import logging
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+This module provides functionality for managing and retrieving scan results,
+allowing users             # Analyze the results to get the same format as crossref command
+            analysis = await self._analyze_scan_results(scan_result, findings) view recent scans and detailed scan information.
+"""
+
 from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timezone
+import logging
 
-from ..entities import ScanResult, MaliciousPackage
-from ..interfaces import StorageService
+from ..entities.scan_result import ScanResult
+from ..entities.malicious_package import MaliciousPackage
+from ..entities.registry_package_match import RegistryPackageMatchBuilder
+from ..interfaces.storage_service import StorageService
+from ..interfaces.packages_registry_service import PackagesRegistryService
 
 
 @dataclass
@@ -34,14 +43,16 @@ class DetailedScanResult:
 class ScanResultsManager:
     """Use case for managing and retrieving scan results."""
     
-    def __init__(self, storage_service: StorageService):
+    def __init__(self, storage_service: StorageService, registry_service: PackagesRegistryService):
         """
         Initialize the scan results manager.
         
         Args:
             storage_service: Service for retrieving scan data
+            registry_service: Service for getting registry information
         """
         self.storage_service = storage_service
+        self.registry_service = registry_service
         self.logger = logging.getLogger(__name__)
     
     async def get_recent_scans(self, limit: int = 3) -> List[ScanSummary]:
@@ -120,7 +131,7 @@ class ScanResultsManager:
             findings = await self._get_findings_for_scan(scan_id)
             
             # Analyze the results to create the same format as crossref command
-            analysis = self._analyze_scan_results(scan_result, findings)
+            analysis = await self._analyze_scan_results(scan_result, findings)
             
             detailed_result = DetailedScanResult(
                 scan_result=scan_result,
@@ -165,7 +176,7 @@ class ScanResultsManager:
             self.logger.error(f"Failed to get findings for scan {scan_id}: {e}")
             return []
     
-    def _analyze_scan_results(self, scan_result: ScanResult, findings: List[MaliciousPackage]) -> Dict[str, Any]:
+    async def _analyze_scan_results(self, scan_result: ScanResult, findings: List[MaliciousPackage]) -> Dict[str, Any]:
         """
         Analyze scan results to create the same format as crossref command output.
         
@@ -179,26 +190,20 @@ class ScanResultsManager:
         found_matches = []
         safe_packages = []
         
+        # Get registry name for dynamic field naming
+        registry_name = await self.registry_service.get_registry_name()
+        match_builder = RegistryPackageMatchBuilder(registry_name)
+        
         # For each finding, create the match information
         for finding in findings:
-            # In the current implementation, if a package is in findings,
-            # it means it was found in the registry
-            match_info = {
-                "package": finding,
-                "malicious_versions": finding.affected_versions or ([finding.version] if finding.version else []),
-                "all_jfrog_versions": [finding.version] if finding.version else [],
-                "matching_versions": [finding.version] if finding.version else []
-            }
+            # Create registry package match from finding
+            package_match = match_builder.build_from_finding(finding)
             
             # Determine if this is a critical match or safe package
-            if finding.version in finding.affected_versions:
-                found_matches.append(match_info)
+            if finding.version and finding.version in (finding.affected_versions or []):
+                found_matches.append(package_match.to_match_dict())
             else:
-                safe_packages.append({
-                    "package": finding,
-                    "malicious_versions": finding.affected_versions or [],
-                    "jfrog_versions": [finding.version] if finding.version else []
-                })
+                safe_packages.append(package_match.to_safe_dict())
         
         # Calculate not found count
         total_scanned = len(scan_result.malicious_packages_found)

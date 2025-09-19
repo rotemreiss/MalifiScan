@@ -531,6 +531,15 @@ class JFrogRegistry(PackagesRegistryService):
             logger.error(f"Health check exception: {e}")
             return False
     
+    def get_registry_name(self) -> str:
+        """
+        Get the display name of the registry.
+        
+        Returns:
+            Human-readable name of the registry
+        """
+        return "JFrog Artifactory"
+    
     async def close(self):
         """Close the HTTP session."""
         if self._session and not self._session.closed:
