@@ -188,7 +188,7 @@ class SecurityAnalysisUseCase:
                 try:
                     await self._save_scan_result(
                         scan_id, start_time, status, len(malicious_packages), 
-                        found_malicious_packages, [], malicious_packages, errors
+                        malicious_packages, [], found_malicious_packages, errors
                     )
                     report_saved = True
                     self.logger.info(f"Scan result saved to storage (scan_id: {scan_id})")
@@ -250,9 +250,9 @@ class SecurityAnalysisUseCase:
             start_time: When the scan started
             status: Status of the scan
             packages_scanned: Number of packages scanned
-            malicious_packages_found: List of malicious packages found
+            malicious_packages_found: List of all malicious packages from OSV feed (for reference)
             packages_blocked: List of package names that were blocked
-            packages_already_present: List of packages already present
+            packages_already_present: List of packages found in the JFrog registry (findings)
             errors: List of error messages
         """
         if not self.storage_service:
@@ -268,9 +268,9 @@ class SecurityAnalysisUseCase:
             packages_scanned=packages_scanned,
             malicious_packages_found=malicious_packages_found,
             packages_blocked=packages_blocked,
-            packages_already_present=packages_already_present,
+            malicious_packages_list=packages_already_present,
             errors=[str(error) if isinstance(error, dict) else error for error in errors],
             execution_duration_seconds=execution_duration
         )
         
-        await self.storage_service.store_scan_result(scan_result)
+        await self.storage_service.store_scan_result(scan_result, self.registry_service)

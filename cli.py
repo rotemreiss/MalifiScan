@@ -15,7 +15,7 @@ Usage:
     python cli.py registry search <package-name>
     python cli.py registry block <package-name> <ecosystem>
     python cli.py logs view --limit 10
-    python cli.py scan run
+    python cli.py scan crossref
     python cli.py health check
     python cli.py interactive  # Start interactive mode
 """
@@ -359,133 +359,6 @@ class SecurityScannerCLI:
             
         except Exception as e:
             self.console.print(f"❌ Error during security cross-reference: {e}", style="red")
-            return False
-
-    async def security_crossref_test(self, ecosystem: str = "npm") -> bool:
-        """Test cross-reference functionality with a known package (axios)."""
-        try:
-            self.console.print(f"🧪 Security Cross-Reference TEST", style="bold cyan")
-            self.console.print(f"Testing with axios version 1.12.2 (known to exist in package registry)")
-            self.console.print(f"🏗️ Ecosystem: {ecosystem}")
-            self.console.print()
-            
-            # Create a fake malicious package entry for axios 1.12.2 (for testing)
-            from src.core.entities.malicious_package import MaliciousPackage
-            from datetime import datetime
-            
-            test_malicious_packages = [
-                MaliciousPackage(
-                    name="axios",
-                    version="1.12.2",
-                    ecosystem="npm",
-                    package_url="pkg:npm/axios@1.12.2",
-                    advisory_id="TEST-AXIOS-2025",
-                    summary="TEST: Malicious code in axios (for testing cross-reference)",
-                    details="This is a test entry to verify cross-reference functionality",
-                    aliases=["TEST-AXIOS"],
-                    affected_versions=["1.12.2"],
-                    database_specific={},
-                    published_at=datetime.now(),
-                    modified_at=datetime.now()
-                )
-            ]
-            
-            self.console.print(f"⚠️ Created test malicious package: {test_malicious_packages[0].name} v{test_malicious_packages[0].version}")
-            
-            # Step 2: Check against package registry
-            self.console.print("\nStep 2: Cross-referencing with package registry...", style="yellow")
-            
-            registry = self.services['registry']
-            
-            # Check package registry health first
-            if not await registry.health_check():
-                self.console.print("❌ Package registry is not accessible", style="red")
-                return False
-            
-            found_matches = []
-            safe_packages = []
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=self.console,
-                transient=True
-            ) as progress:
-                task = progress.add_task("Checking packages...", total=len(test_malicious_packages))
-                
-                for malicious_pkg in test_malicious_packages:
-                    progress.update(task, description=f"Checking {malicious_pkg.name}")
-                    
-                    # Search for this package in JFrog
-                    jfrog_results = await registry.search_packages(malicious_pkg.name, ecosystem)
-                    
-                    if jfrog_results:
-                        # Check if any versions match
-                        jfrog_versions = [result.get('version', '') for result in jfrog_results if result.get('version')]
-                        malicious_versions = malicious_pkg.affected_versions
-                        
-                        # Check for version matches
-                        version_matches = []
-                        for jfrog_version in jfrog_versions:
-                            if jfrog_version and jfrog_version in malicious_versions:
-                                version_matches.append(jfrog_version)
-                        
-                        if version_matches:
-                            found_matches.append({
-                                'package': malicious_pkg,
-                                'jfrog_results': jfrog_results,
-                                'matching_versions': version_matches,
-                                'all_jfrog_versions': jfrog_versions,
-                                'malicious_versions': malicious_versions
-                            })
-                        else:
-                            safe_packages.append({
-                                'package': malicious_pkg,
-                                'jfrog_results': jfrog_results,
-                                'jfrog_versions': jfrog_versions,
-                                'malicious_versions': malicious_versions
-                            })
-                    
-                    progress.advance(task)
-            
-            # Step 3: Display results
-            self.console.print("\n" + "="*80, style="bold")
-            self.console.print("🛡️ TEST RESULTS", style="bold cyan")
-            self.console.print("="*80, style="bold")
-            
-            if found_matches:
-                self.console.print(f"\n✅ SUCCESS: Test detected malicious package in JFrog!", style="bold green")
-                
-                for match in found_matches:
-                    pkg = match['package']
-                    self.console.print(f"\n❌ {pkg.name}", style="bold red")
-                    self.console.print(f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}")
-                    self.console.print(f"   🏗️ JFrog versions: {', '.join(match['all_jfrog_versions'])}")
-                    self.console.print(f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
-                    self.console.print(f"   🔗 Package URL: {pkg.package_url}")
-                    
-                self.console.print(f"\n🎯 TEST PASSED: Cross-reference logic is working correctly!", style="bold green")
-            else:
-                self.console.print(f"\n❌ TEST FAILED: Should have detected axios 1.12.2 as malicious!", style="bold red")
-                if safe_packages:
-                    for safe in safe_packages:
-                        pkg = safe['package']
-                        self.console.print(f"\n🟡 {pkg.name} found but versions don't match:")
-                        self.console.print(f"   📦 Expected malicious: {', '.join(safe['malicious_versions'])}")
-                        self.console.print(f"   🏗️ JFrog versions: {', '.join(safe['jfrog_versions'])}")
-            
-            # Clean up connections
-            await registry.close()
-            
-            return len(found_matches) > 0  # Return True if test passed
-            
-        except Exception as e:
-            self.console.print(f"❌ Error during test: {e}", style="red")
-            registry = self.services.get('registry')
-            if registry:
-                await registry.close()
             return False
 
     async def registry_block(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> bool:
@@ -1003,7 +876,7 @@ Examples:
   python cli.py logs view --limit 10
   python cli.py logs packages --ecosystem npm --hours 72
   python cli.py feed fetch --ecosystem npm --limit 50 --hours 24
-  python cli.py scan run
+  python cli.py scan crossref
   python cli.py health check
   python cli.py interactive
         """
@@ -1038,9 +911,6 @@ Examples:
     crossref_parser.add_argument("--ecosystem", default="npm", help="Package ecosystem (default: npm)")
     crossref_parser.add_argument("--limit", type=int, help="Maximum number of malicious packages to check (default: no limit)")
     crossref_parser.add_argument("--no-report", action="store_true", help="Skip saving scan report to storage")
-    
-    test_parser = scan_subparsers.add_parser("test", help="Test cross-reference functionality with known package")
-    test_parser.add_argument("--ecosystem", default="npm", help="Package ecosystem (default: npm)")
     
     # Logs commands
     logs_parser = subparsers.add_parser("logs", help="View logs and scan results")
@@ -1111,10 +981,6 @@ Examples:
         elif args.command == "scan":
             if args.scan_action == "crossref":
                 await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report)
-            elif args.scan_action == "test":
-                await cli.security_crossref_test(args.ecosystem)
-            elif args.scan_action == "run":
-                await cli.run_manual_scan()
                 
         elif args.command == "health":
             if args.health_action == "check":

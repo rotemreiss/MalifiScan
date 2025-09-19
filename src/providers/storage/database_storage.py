@@ -215,12 +215,13 @@ class DatabaseStorage(StorageService):
             logger.error(f"Failed to initialize database schema: {e}")
             raise StorageError(f"Failed to initialize database schema: {e}") from e
     
-    async def store_scan_result(self, scan_result: ScanResult) -> bool:
+    async def store_scan_result(self, scan_result: ScanResult, registry_service: 'PackagesRegistryService' = None) -> bool:
         """
         Store a scan result in the database.
         
         Args:
             scan_result: The scan result to store
+            registry_service: The registry service used for the scan (optional)
             
         Returns:
             True if stored successfully, False otherwise
@@ -229,6 +230,29 @@ class DatabaseStorage(StorageService):
         
         try:
             with self.SessionLocal() as session:
+                # Get or create the registry based on the registry service
+                if registry_service and hasattr(registry_service, 'base_url'):
+                    # Try to find existing registry by base_url
+                    registry = session.query(RegistryModel).filter_by(base_url=registry_service.base_url).first()
+                    if not registry:
+                        # Create new registry entry
+                        registry = RegistryModel(
+                            type='jfrog',  # Assume JFrog for now, could be made dynamic
+                            base_url=registry_service.base_url
+                        )
+                        session.add(registry)
+                        session.flush()
+                else:
+                    # Fallback to default registry
+                    registry = session.query(RegistryModel).filter_by(type='default').first()
+                    if not registry:
+                        registry = RegistryModel(
+                            type='default',
+                            base_url='http://localhost'  # Default placeholder
+                        )
+                        session.add(registry)
+                        session.flush()
+                
                 # Check if scan result already exists
                 existing = session.query(ScanResultModel).filter_by(scan_id=scan_result.scan_id).first()
                 
@@ -237,13 +261,13 @@ class DatabaseStorage(StorageService):
                     existing.timestamp = scan_result.timestamp
                     existing.status = scan_result.status.value
                     existing.packages_scanned = scan_result.packages_scanned
-                    existing.packages_blocked = json.dumps(scan_result.packages_blocked)
                     existing.errors = json.dumps(scan_result.errors)
                     existing.execution_duration_seconds = scan_result.execution_duration_seconds
                     
                     # Clear existing malicious packages and findings
                     session.query(MaliciousPackageModel).filter_by(scan_result_id=existing.id).delete()
                     session.query(FindingModel).filter_by(scan_result_id=existing.id).delete()
+                    session.query(BlockedPackageModel).filter_by(scan_result_id=existing.id).delete()
                     
                     scan_result_model = existing
                     logger.debug(f"Updated existing scan result: {scan_result.scan_id}")
@@ -251,10 +275,10 @@ class DatabaseStorage(StorageService):
                     # Create new record
                     scan_result_model = ScanResultModel(
                         scan_id=scan_result.scan_id,
+                        registry_id=registry.id,
                         timestamp=scan_result.timestamp,
                         status=scan_result.status.value,
                         packages_scanned=scan_result.packages_scanned,
-                        packages_blocked=json.dumps(scan_result.packages_blocked),
                         errors=json.dumps(scan_result.errors),
                         execution_duration_seconds=scan_result.execution_duration_seconds
                     )
@@ -264,6 +288,7 @@ class DatabaseStorage(StorageService):
                     logger.debug(f"Created new scan result: {scan_result.scan_id}")
                 
                 # Store malicious packages found
+                malicious_package_map = {}  # Track created packages for findings
                 for package in scan_result.malicious_packages_found:
                     malicious_package_model = MaliciousPackageModel(
                         scan_result_id=scan_result_model.id,
@@ -281,23 +306,60 @@ class DatabaseStorage(StorageService):
                         modified_at=package.modified_at
                     )
                     session.add(malicious_package_model)
+                    session.flush()  # Get the ID
+                    malicious_package_map[package.package_identifier] = malicious_package_model.id
                 
                 # Store findings (packages from malicious_packages_list)
                 for package in scan_result.malicious_packages_list:
+                    # Try to find matching malicious package or create one
+                    malicious_package_id = malicious_package_map.get(package.package_identifier)
+                    
+                    if not malicious_package_id:
+                        # Create a malicious package entry for this finding
+                        malicious_package_model = MaliciousPackageModel(
+                            scan_result_id=scan_result_model.id,
+                            name=package.name,
+                            version=package.version,
+                            ecosystem=package.ecosystem,
+                            package_url=package.package_url,
+                            advisory_id=package.advisory_id,
+                            summary=package.summary,
+                            details=package.details,
+                            aliases=json.dumps(package.aliases),
+                            affected_versions=json.dumps(package.affected_versions),
+                            database_specific=json.dumps(package.database_specific),
+                            published_at=package.published_at,
+                            modified_at=package.modified_at
+                        )
+                        session.add(malicious_package_model)
+                        session.flush()  # Get the ID
+                        malicious_package_id = malicious_package_model.id
+                    
+                    # Create the finding
                     finding_model = FindingModel(
                         scan_result_id=scan_result_model.id,
-                        package_name=package.name,
-                        package_version=package.version,
-                        package_ecosystem=package.ecosystem,
-                        package_url=package.package_url,
-                        matched_advisory_id=package.advisory_id,
-                        matched_summary=package.summary,
-                        matched_affected_versions=json.dumps(package.affected_versions),
-                        risk_level="HIGH",  # Default risk level
-                        detection_method="OSV_DATABASE",
-                        confidence_score=1.0
+                        malicious_package_id=malicious_package_id
                     )
                     session.add(finding_model)
+                
+                # Store blocked packages using the relationship
+                for blocked_package_name in scan_result.packages_blocked:
+                    # Find the corresponding malicious package
+                    malicious_package_id = None
+                    for package_id, mp_id in malicious_package_map.items():
+                        if blocked_package_name in package_id:  # Simple name matching
+                            malicious_package_id = mp_id
+                            break
+                    
+                    if malicious_package_id:
+                        blocked_package_model = BlockedPackageModel(
+                            scan_result_id=scan_result_model.id,
+                            registry_id=registry.id,
+                            malicious_package_id=malicious_package_id,
+                            block_action='blocked',
+                            block_status='success'
+                        )
+                        session.add(blocked_package_model)
                 
                 session.commit()
                 return True
@@ -474,21 +536,19 @@ class DatabaseStorage(StorageService):
     
     def _finding_model_to_malicious_package(self, model: FindingModel) -> MaliciousPackage:
         """Convert FindingModel to MaliciousPackage entity for malicious_packages_list."""
+        # Get the malicious package data through the relationship
+        mp = model.malicious_package
         return MaliciousPackage(
-            name=model.package_name,
-            version=model.package_version,
-            ecosystem=model.package_ecosystem,
-            package_url=model.package_url,
-            advisory_id=model.matched_advisory_id,
-            summary=model.matched_summary,
-            details=f"Risk Level: {model.risk_level}, Detection: {model.detection_method}",
-            aliases=[],
-            affected_versions=json.loads(model.matched_affected_versions or "[]"),
-            database_specific={
-                "risk_level": model.risk_level,
-                "detection_method": model.detection_method,
-                "confidence_score": model.confidence_score
-            },
-            published_at=None,
-            modified_at=None
+            name=mp.name,
+            version=mp.version,
+            ecosystem=mp.ecosystem,
+            package_url=mp.package_url,
+            advisory_id=mp.advisory_id,
+            summary=mp.summary,
+            details=mp.details,
+            aliases=json.loads(mp.aliases or "[]"),
+            affected_versions=json.loads(mp.affected_versions or "[]"),
+            database_specific=json.loads(mp.database_specific or "{}"),
+            published_at=mp.published_at,
+            modified_at=mp.modified_at
         )

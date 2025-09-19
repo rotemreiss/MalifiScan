@@ -168,9 +168,7 @@ class ServiceFactory:
                 )
             elif storage_type == "database" or storage_type == "sqlite":
                 return DatabaseStorage(
-                    database_path=self.config.storage_service.config.get("database_path", "data/security_scanner.db"),
-                    connection_timeout=self.config.storage_service.config.get("connection_timeout", 30.0),
-                    max_connections=self.config.storage_service.config.get("max_connections", 10)
+                    database_path=self.config.storage_service.config.get("database_path", "data/security_scanner.db")
                 )
             else:
                 raise ServiceFactoryError(f"Unknown storage service type: {self.config.storage_service.type}")

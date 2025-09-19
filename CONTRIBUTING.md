@@ -33,28 +33,113 @@ src/
 
 ### Installation
 
+#### Option 1: Using UV (Recommended for Development)
+
+UV provides faster dependency resolution and better development experience.
+
+1. **Install UV** (if not already installed)
+   ```bash
+   # Using the official installer
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # Alternative methods:
+   # macOS: brew install uv
+   # Windows: winget install --id=astral-sh.uv
+   # Or visit: https://docs.astral.sh/uv/getting-started/installation/
+   ```
+
+2. **Clone and setup the project**
+   ```bash
+   git clone <repository-url>
+   cd osv-jfrog
+   
+   # Initialize UV project
+   uv init --no-readme --no-pin-python
+   
+   # Install all dependencies (including dev dependencies)
+   uv sync --dev
+   ```
+
+3. **Configure the application**
+   ```bash
+   # Create .env file from example (if available)
+   cp .env.example .env  # If .env.example exists
+   
+   # Or create a new .env file with the following content:
+   cat > .env << 'EOF'
+# JFrog Artifactory Configuration
+JFROG_BASE_URL=https://your-company.jfrog.io
+JFROG_ACCESS_TOKEN=your-access-token
+JFROG_REPOSITORY=your-repo-name
+
+# Scanner Configuration  
+SCAN_INTERVAL_HOURS=24
+LOG_LEVEL=INFO
+STORAGE_TYPE=memory
+
+# OSV Database Configuration
+OSV_API_BASE_URL=https://api.osv.dev
+OSV_BATCH_SIZE=100
+EOF
+   
+   # Edit .env with your actual credentials
+   vim .env  # or your preferred editor
+   ```
+
+4. **Make CLI executable**
+   ```bash
+   chmod +x cli.py
+   ```
+
+#### Option 2: Using pip (Traditional)
+
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
    cd osv-jfrog
    ```
 
-2. **Create virtual environment**
+2. **Setup Python environment**
    ```bash
+   # Create virtual environment
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
-   ```bash
+   
+   # Upgrade pip
+   pip install --upgrade pip
+   
+   # Install dependencies
    pip install -r requirements.txt
    ```
 
-4. **Configure the application**
+3. **Configure the application**
    ```bash
-   cp .env.example .env
+   # Create .env file from example (if available)
+   cp .env.example .env  # If .env.example exists
+   
+   # Or create a new .env file manually
    # Edit .env with your actual credentials
    ```
+
+4. **Make CLI executable**
+   ```bash
+   chmod +x cli.py
+   ```
+
+#### Verification
+
+After installation, verify everything works:
+
+```bash
+# Using UV
+uv run python cli.py --help
+uv run python cli.py health check
+
+# Using pip/venv (activate environment first)
+source venv/bin/activate
+python cli.py --help
+python cli.py health check
+```
 
 ## ⚙️ Configuration
 
@@ -96,13 +181,93 @@ scheduler:
   interval_hours: 1
 ```
 
+## 🔄 Development Workflow
+
+### Using UV (Recommended)
+
+UV provides a faster and more reliable development experience:
+
+```bash
+# Initial setup (after cloning)
+uv init --no-readme --no-pin-python
+uv sync --dev
+
+# Run the application
+uv run python cli.py health check
+uv run python cli.py scan crossref
+
+# Quick testing during development
+uv run pytest tests/ -m "not integration"        # Fast feedback loop
+uv run pytest tests/ -m integration              # Comprehensive testing
+
+# Install additional dev dependencies
+uv add --dev black isort flake8
+
+# Run linting/formatting
+uv run black src/ tests/
+uv run isort src/ tests/
+uv run flake8 src/ tests/
+
+# Sync dependencies after changes
+uv sync --dev
+```
+
+### Using pip/venv (Traditional)
+
+```bash
+# Activate environment (always required)
+source venv/bin/activate
+
+# Run the application
+python cli.py health check
+python cli.py scan crossref
+
+# Run tests
+pytest tests/ -m "not integration"  # Unit tests
+pytest tests/ -m integration       # Integration tests
+
+# Install additional dependencies
+pip install black isort flake8
+
+# Update requirements
+pip freeze > requirements.txt
+```
+
 ## 🧪 Testing
 
 ### Running Tests
 
 We use a **co-located test structure** where tests are placed next to their source files with a `_test.py` suffix.
 
+#### Using UV (Recommended for Development)
+
 ```bash
+# Direct UV commands
+uv run pytest tests/                              # All tests
+uv run pytest tests/ -m "not integration"        # Unit tests only
+uv run pytest tests/ -m integration              # Integration tests only
+
+# Run with coverage
+uv run pytest tests/ --cov=src --cov-report=html
+
+# Run tests for a specific module
+uv run pytest src/core/usecases/security_scanner_test.py
+
+# Run specific test method
+uv run pytest src/core/usecases/security_scanner_test.py::TestSecurityScanner::test_execute_scan_success
+
+# Run all tests in a directory
+uv run pytest src/core/entities/
+
+# Check test coverage for use cases
+uv run pytest src/core/usecases/ --cov=src/core/usecases --cov-report=term-missing
+```
+
+#### Using pip/venv (Traditional)
+
+```bash
+source venv/bin/activate  # Activate environment first
+
 # Run all tests (including co-located tests)
 pytest src/
 

@@ -21,46 +21,152 @@ A security tool that detects malicious packages from the OSV (Open Source Vulner
 
 ### Installation
 
+#### Option 1: Using UV (Recommended)
+
+UV is a fast Python package manager that provides better dependency resolution and faster installs.
+
+1. **Install UV** (if not already installed)
+   ```bash
+   # Using the official installer
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   # Or visit: https://docs.astral.sh/uv/getting-started/installation/
+   ```
+
+2. **Clone and setup the project**
+   ```bash
+   git clone <repository-url>
+   cd osv-jfrog
+   
+   # Initialize UV project and install dependencies
+   uv init --no-readme --no-pin-python
+   uv sync --dev
+   ```
+
+3. **Configure JFrog connection**
+   ```bash
+   # Create .env file from example (if available) or create new one
+   cp .env.example .env  # If .env.example exists
+   
+   # Edit .env with your JFrog details:
+   # JFROG_BASE_URL=https://your-company.jfrog.io
+   # JFROG_ACCESS_TOKEN=your-access-token
+   # JFROG_REPOSITORY=your-repo-name
+   ```
+
+4. **Make CLI executable**
+   ```bash
+   chmod +x cli.py
+   ```
+
+#### Option 2: Using pip (Traditional)
+
 1. **Clone and setup**
    ```bash
    git clone <repository-url>
    cd osv-jfrog
+   
+   # Create and activate virtual environment
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
+   
+   # Upgrade pip and install dependencies
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
 2. **Configure JFrog connection**
    ```bash
-   cp .env.example .env
+   # Create .env file from example (if available) or create new one
+   cp .env.example .env  # If .env.example exists
+   
    # Edit .env with your JFrog details:
    # JFROG_BASE_URL=https://your-company.jfrog.io
-   # JFROG_API_KEY=your-api-key
+   # JFROG_ACCESS_TOKEN=your-access-token
+   # JFROG_REPOSITORY=your-repo-name
    ```
+
+3. **Make CLI executable**
+   ```bash
+   chmod +x cli.py
+   ```
+
+#### Environment Configuration
+
+If `.env.example` doesn't exist, create a `.env` file with the following template:
+
+```bash
+# JFrog Artifactory Configuration
+JFROG_BASE_URL=https://your-instance.jfrog.io
+JFROG_ACCESS_TOKEN=your-access-token
+JFROG_REPOSITORY=your-repo-name
+
+# Scanner Configuration  
+SCAN_INTERVAL_HOURS=24
+LOG_LEVEL=INFO
+STORAGE_TYPE=memory
+
+# OSV Database Configuration
+OSV_API_BASE_URL=https://api.osv.dev
+OSV_BATCH_SIZE=100
+```
+
+**⚠️ Important**: Edit the `.env` file with your actual JFrog credentials before running the tool.
 
 ## 📋 Usage
 
-The tool provides two entry points:
+The tool provides two entry points with support for both UV and traditional Python environments:
 
 1. **`python -m src.main`** - Core CLI with basic scan and status operations
 2. **`cli.py`** - Comprehensive testing and administration tool
 
-### Core CLI Commands (python -m src.main)
+### Core CLI Commands
 
-**Basic Security Scan**
+#### Using UV (Recommended)
 ```bash
+# Basic security scan
+uv run python -m src.main --scan
+uv run python -m src.main  # Default: runs scan
+
+# Health check
+uv run python -m src.main --status
+```
+
+#### Using pip/venv (Traditional)
+```bash
+source venv/bin/activate  # Activate virtual environment first
+
+# Basic security scan
 python -m src.main --scan
 python -m src.main  # Default: runs scan
-```
-Executes a complete security scan using the core functionality.
 
-**Health Check**
-```bash
+# Health check
 python -m src.main --status
 ```
-Shows service health and application status.
 
 ### Comprehensive CLI (cli.py)
+
+#### Using UV (Recommended)
+```bash
+# Health check
+uv run python cli.py health check
+
+# Search for packages
+uv run python cli.py jfrog search <package-name>
+uv run python cli.py jfrog search axios
+uv run python cli.py jfrog search react npm
+
+# Security cross-reference scan
+uv run python cli.py scan crossref
+uv run python cli.py scan crossref --hours 24
+
+# Test security scan
+uv run python cli.py scan test
+
+# Interactive mode
+uv run python cli.py interactive
+```
+
+#### Using pip/venv (Traditional)
 
 **Health Check**
 ```bash
@@ -118,6 +224,44 @@ For scheduled scans, use the core entry point:
 
 # Daily health check
 0 9 * * * cd /path/to/osv-jfrog && python -m src.main --status
+```
+
+## 🧪 Testing
+
+### Using UV (Recommended)
+```bash
+# Run all tests
+uv run pytest tests/
+
+# Run only unit tests (faster)
+uv run pytest tests/ -m "not integration"
+
+# Run only integration tests
+uv run pytest tests/ -m integration
+
+# Run with coverage
+uv run pytest tests/ --cov=src --cov-report=html
+
+# Run tests with custom pytest options
+uv run pytest tests/ --verbose --tb=short
+uv run pytest tests/ -k "test_jfrog"
+```
+
+### Using pip/venv (Traditional)
+```bash
+source venv/bin/activate  # Activate environment first
+
+# Run all tests
+pytest tests/
+
+# Run only unit tests
+pytest tests/ -m "not integration"
+
+# Run only integration tests  
+pytest tests/ -m integration
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
 ```
 
 ### Command Options

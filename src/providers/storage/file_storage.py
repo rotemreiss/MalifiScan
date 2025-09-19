@@ -33,7 +33,7 @@ class FileStorage(StorageService):
         
         logger.debug(f"File storage initialized with directory: {self.data_directory}")
     
-    async def store_scan_result(self, scan_result: ScanResult) -> bool:
+    async def store_scan_result(self, scan_result: ScanResult, registry_service: 'PackagesRegistryService' = None) -> bool:
         """
         Store a scan result as an individual JSON file.
         

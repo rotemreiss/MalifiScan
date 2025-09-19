@@ -33,6 +33,10 @@ tmp/
 .env.production
 *secrets*
 
+# Local data files
+data/
+*.db
+
 # Credentials
 jfrog-credentials.json
 artifactory.conf

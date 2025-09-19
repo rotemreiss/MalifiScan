@@ -37,7 +37,7 @@ notification_service:
 
 # Storage Service Configuration
 storage_service:
-  type: file  # Options: memory, file, database/sqlite
+  type: database  # Options: memory, file, database/sqlite
   enabled: true
   config:
     # For memory storage (default for integration tests and local development):
@@ -45,12 +45,10 @@ storage_service:
     clear_on_init: false
     
     # For file storage (each scan result saved as individual JSON file):
-    data_directory: "scan_results"
+    # data_directory: "scan_results"
 
     # For database storage:
-    # database_path: "data/security_scanner.db"
-    # connection_timeout: 30.0
-    # max_connections: 10
+    database_path: "data/security_scanner.db"
 
 # Logging Configuration
 logging:

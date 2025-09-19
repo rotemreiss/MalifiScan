@@ -1,21 +1,25 @@
 """Storage service interface."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from src.core.entities import ScanResult, MaliciousPackage
+
+if TYPE_CHECKING:
+    from .packages_registry_service import PackagesRegistryService
 
 
 class StorageService(ABC):
     """Abstract interface for storage providers."""
     
     @abstractmethod
-    async def store_scan_result(self, scan_result: ScanResult) -> bool:
+    async def store_scan_result(self, scan_result: ScanResult, registry_service: 'PackagesRegistryService' = None) -> bool:
         """
         Store a scan result in the storage backend.
         
         Args:
             scan_result: The scan result to store
+            registry_service: The registry service used for the scan (optional)
             
         Returns:
             True if stored successfully, False otherwise

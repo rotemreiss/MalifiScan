@@ -39,7 +39,7 @@ class MemoryStorage(StorageService):
             
         logger.debug(f"Memory storage initialized with max_scan_results={max_scan_results}")
     
-    async def store_scan_result(self, scan_result: ScanResult) -> bool:
+    async def store_scan_result(self, scan_result: ScanResult, registry_service: 'PackagesRegistryService' = None) -> bool:
         """
         Store a scan result in memory.
         
