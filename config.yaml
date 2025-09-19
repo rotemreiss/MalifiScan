@@ -1,0 +1,61 @@
+# Security Scanner Configuration
+# This file contains the main configuration for the security scanner application.
+# Copy this file and modify according to your environment.
+
+# Application Environment
+environment: development  # development, staging, production
+debug: false
+
+# Packages Feed Configuration
+packages_feed:
+  type: osv  # Currently only 'osv' is supported
+  enabled: true
+  config:
+    timeout_seconds: 30
+    max_retries: 3
+    retry_delay: 1.0
+
+# Package Registry Configuration  
+packages_registry:
+  type: jfrog  # Currently only 'jfrog' is supported
+  enabled: true  # Enabled for testing with configured credentials
+  config:
+    timeout_seconds: 30
+    max_retries: 3
+    retry_delay: 1.0
+    # Additional JFrog-specific configuration can be added here
+
+# Notification Service Configuration
+notification_service:
+  type: "null"  # Options: null, composite (for future implementations like MS Teams)
+  enabled: false  # Disabled - future implementations welcome
+  channels: []
+  config:
+    timeout_seconds: 30
+    max_retries: 3
+    retry_delay: 1.0
+
+# Storage Service Configuration
+storage_service:
+  type: file  # Options: memory, file, database/sqlite
+  enabled: true
+  config:
+    # For memory storage (default for integration tests and local development):
+    max_scan_results: 1000
+    clear_on_init: false
+    
+    # For file storage (each scan result saved as individual JSON file):
+    data_directory: "scan_results"
+
+    # For database storage:
+    # database_path: "data/security_scanner.db"
+    # connection_timeout: 30.0
+    # max_connections: 10
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: null  # Set to a file path to enable file logging
+  max_file_size_mb: 10
+  backup_count: 5

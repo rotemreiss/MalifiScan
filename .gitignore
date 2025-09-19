@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.env
+.venv
+venv/
+env/
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+logs/
+temp/
+tmp/
+*.tmp
+
+# Configuration with secrets
+.env.local
+.env.production
+*secrets*
+
+# Credentials
+jfrog-credentials.json
+artifactory.conf
+google-credentials.json
+service-account.json
+*-key.json
+
+# OSV-JFrog specific
+osv_cache/
+scans/
+scan_results/
+malicious_packages_cache/
+vulnerability_reports/
+
+# Testing
+.pytest_cache/
+.coverage
