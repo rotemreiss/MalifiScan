@@ -80,6 +80,30 @@ class StorageService(ABC):
         pass
     
     @abstractmethod
+    async def get_scan_summary(self, limit: Optional[int] = None) -> List[dict]:
+        """
+        Get scan summaries with basic metadata.
+        
+        Args:
+            limit: Maximum number of scan summaries to return
+            
+        Returns:
+            List of dictionaries with scan summary data:
+            - scan_id: str
+            - timestamp: datetime  
+            - status: str
+            - packages_scanned: int
+            - malicious_packages_count: int
+            - findings_count: int
+            - execution_duration_seconds: float
+            
+        Raises:
+            StorageError: If retrieval operation fails
+            NotImplementedError: If storage provider doesn't support scan summaries
+        """
+        pass
+    
+    @abstractmethod
     async def health_check(self) -> bool:
         """
         Check if the storage service is healthy and accessible.

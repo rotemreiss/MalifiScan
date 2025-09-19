@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, Float, create_engine, text, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Float, create_engine, text, ForeignKey, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.exc import SQLAlchemyError
@@ -409,6 +409,15 @@ class DatabaseStorage(StorageService):
                 for result in results:
                     try:
                         if result.scan_id not in scan_results_dict:
+                            # Get blocked package names for this scan
+                            blocked_packages = session.query(BlockedPackageModel).join(
+                                MaliciousPackageModel, BlockedPackageModel.malicious_package_id == MaliciousPackageModel.id
+                            ).filter(
+                                BlockedPackageModel.scan_result_id == result.id
+                            ).all()
+                            
+                            blocked_package_names = [bp.malicious_package.name for bp in blocked_packages]
+                            
                             # Create the base scan result
                             scan_results_dict[result.scan_id] = ScanResult(
                                 scan_id=result.scan_id,
@@ -416,7 +425,7 @@ class DatabaseStorage(StorageService):
                                 status=ScanStatus(result.status),
                                 packages_scanned=result.packages_scanned,
                                 malicious_packages_found=[],
-                                packages_blocked=json.loads(result.packages_blocked or "[]"),
+                                packages_blocked=blocked_package_names,
                                 malicious_packages_list=[],
                                 errors=json.loads(result.errors or "[]"),
                                 execution_duration_seconds=result.execution_duration_seconds
@@ -499,6 +508,22 @@ class DatabaseStorage(StorageService):
         """
         logger.debug(f"Malicious packages are stored as part of scan results, nothing to do for {len(packages)} packages")
         return True
+    
+    async def get_scan_summary(self, limit: Optional[int] = None) -> List[dict]:
+        """
+        Get scan summaries with basic metadata.
+        
+        This method is not implemented yet - use get_scan_results() instead.
+        
+        Args:
+            limit: Maximum number of scan summaries to return
+            
+        Raises:
+            NotImplementedError: Method not yet implemented
+        """
+        raise NotImplementedError(
+            "get_scan_summary() is not yet implemented. Use get_scan_results() instead."
+        )
     
     async def health_check(self) -> bool:
         """

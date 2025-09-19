@@ -361,6 +361,153 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error during security cross-reference: {e}", style="red")
             return False
 
+    async def scan_results_list(self, limit: int = 3) -> bool:
+        """List recent scan results with summary information."""
+        try:
+            self.console.print(f"📊 Recent Scan Results (Last {limit})", style="bold cyan")
+            
+            if not self.app:
+                self.console.print("❌ Application not initialized", style="red")
+                return False
+            
+            # Get recent scan summaries
+            summaries_result = await self.app.get_recent_scan_summaries(limit)
+            
+            if not summaries_result["success"]:
+                error_msg = summaries_result.get("error", "Unknown error")
+                self.console.print(f"❌ Error retrieving scan summaries: {error_msg}", style="red")
+                return False
+            
+            summaries = summaries_result["summaries"]
+            
+            if not summaries:
+                self.console.print("📝 No scan results found", style="yellow")
+                return True
+            
+            # Create table for scan summaries
+            table = Table(title=f"Recent Scan Results ({len(summaries)} scans)")
+            table.add_column("Scan ID", style="cyan")
+            table.add_column("Date & Time", style="blue")
+            table.add_column("Status", style="magenta")
+            table.add_column("Packages Scanned", style="yellow")
+            table.add_column("Findings", style="red")
+            table.add_column("Duration", style="green")
+            
+            for summary in summaries:
+                status_emoji = "✅" if summary.status == "success" else "❌"
+                duration = f"{summary.execution_duration_seconds:.1f}s" if summary.execution_duration_seconds else "N/A"
+                findings_display = str(summary.findings_count) if summary.findings_count > 0 else "0"
+                findings_style = "red" if summary.findings_count > 0 else "green"
+                
+                table.add_row(
+                    summary.scan_id,  # Full scan ID
+                    summary.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    f"{status_emoji} {summary.status}",
+                    str(summary.packages_scanned),
+                    f"[{findings_style}]{findings_display}[/{findings_style}]",
+                    duration
+                )
+            
+            self.console.print(table)
+            self.console.print(f"\n💡 Use 'scan results --scan-id <ID>' to view detailed results", style="dim")
+            return True
+            
+        except Exception as e:
+            self.console.print(f"❌ Error retrieving scan results: {e}", style="red")
+            return False
+
+    async def scan_results_details(self, scan_id: str) -> bool:
+        """Show detailed scan result with findings analysis."""
+        try:
+            self.console.print(f"🔍 Scan Result Details: {scan_id}", style="bold cyan")
+            
+            if not self.app:
+                self.console.print("❌ Application not initialized", style="red")
+                return False
+            
+            # Get detailed scan result
+            details_result = await self.app.get_scan_result_details(scan_id)
+            
+            if not details_result["success"]:
+                error_msg = details_result.get("error", "Unknown error")
+                self.console.print(f"❌ Error retrieving scan details: {error_msg}", style="red")
+                return False
+            
+            details = details_result["details"]
+            scan_result = details_result["scan_result"]
+            found_matches = details_result["found_matches"]
+            safe_packages = details_result["safe_packages"]
+            not_found_count = details_result["not_found_count"]
+            
+            # Display scan metadata
+            self.console.print("\n" + "="*80, style="bold")
+            self.console.print("📋 SCAN METADATA", style="bold cyan")
+            self.console.print("="*80, style="bold")
+            
+            metadata_table = Table()
+            metadata_table.add_column("Property", style="cyan")
+            metadata_table.add_column("Value", style="white")
+            
+            status_emoji = "✅" if scan_result.status.value == "success" else "❌"
+            duration = f"{scan_result.execution_duration_seconds:.1f}s" if scan_result.execution_duration_seconds else "N/A"
+            
+            metadata_table.add_row("Scan ID", scan_result.scan_id)
+            metadata_table.add_row("Timestamp", scan_result.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"))
+            metadata_table.add_row("Status", f"{status_emoji} {scan_result.status.value}")
+            metadata_table.add_row("Duration", duration)
+            metadata_table.add_row("Packages Scanned", str(scan_result.packages_scanned))
+            metadata_table.add_row("Total Findings", str(len(details.findings)))
+            
+            if scan_result.errors:
+                metadata_table.add_row("Errors", f"{len(scan_result.errors)} errors occurred")
+            
+            self.console.print(metadata_table)
+            
+            # Display the same analysis format as crossref command
+            self.console.print("\n" + "="*80, style="bold")
+            self.console.print("🛡️ SECURITY ANALYSIS RESULTS", style="bold cyan")
+            self.console.print("="*80, style="bold")
+            
+            if found_matches:
+                self.console.print(f"\n🚨 CRITICAL: {len(found_matches)} malicious packages found in JFrog!", style="bold red")
+                
+                for match in found_matches:
+                    pkg = match['package']
+                    self.console.print(f"\n❌ {pkg.name}", style="bold red")
+                    self.console.print(f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}")
+                    self.console.print(f"   🏗️ JFrog versions: {', '.join(match['all_jfrog_versions'])}")
+                    self.console.print(f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
+                    if hasattr(pkg, 'package_url') and pkg.package_url:
+                        self.console.print(f"   🔗 Package URL: {pkg.package_url}")
+            
+            if safe_packages:
+                self.console.print(f"\n⚠️ {len(safe_packages)} packages found but with different versions:", style="yellow")
+                
+                for safe in safe_packages:
+                    pkg = safe['package']
+                    self.console.print(f"\n🟡 {pkg.name}")
+                    self.console.print(f"   📦 Malicious versions: {', '.join(safe['malicious_versions'])}")
+                    self.console.print(f"   🏗️ JFrog versions: {', '.join(safe['jfrog_versions'])} ✅")
+            
+            if not_found_count > 0:
+                self.console.print(f"\n✅ {not_found_count} malicious packages not found in JFrog", style="green")
+            
+            # Summary
+            self.console.print(f"\n📊 SUMMARY:", style="bold")
+            self.console.print(f"   Total malicious packages checked: {scan_result.packages_scanned}")
+            self.console.print(f"   Critical matches (same versions): {len(found_matches)}", style="red" if found_matches else "white")
+            self.console.print(f"   Safe (different versions): {len(safe_packages)}", style="yellow" if safe_packages else "white")
+            self.console.print(f"   Not found in package registry: {not_found_count}", style="green")
+            
+            if scan_result.errors:
+                self.console.print(f"   Errors during scan: {len(scan_result.errors)}", style="red")
+            
+            return True
+            
+        except Exception as e:
+            self.console.print(f"❌ Error retrieving scan details: {e}", style="red")
+            return False
+
     async def registry_block(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> bool:
         """Block a package in the package registry."""
         try:
@@ -912,6 +1059,10 @@ Examples:
     crossref_parser.add_argument("--limit", type=int, help="Maximum number of malicious packages to check (default: no limit)")
     crossref_parser.add_argument("--no-report", action="store_true", help="Skip saving scan report to storage")
     
+    results_parser = scan_subparsers.add_parser("results", help="View scan results and findings")
+    results_parser.add_argument("--scan-id", type=str, help="Show detailed results for specific scan ID")
+    results_parser.add_argument("--limit", type=int, default=3, help="Number of recent scans to show (default: 3)")
+    
     # Logs commands
     logs_parser = subparsers.add_parser("logs", help="View logs and scan results")
     logs_subparsers = logs_parser.add_subparsers(dest="logs_action")
@@ -981,6 +1132,11 @@ Examples:
         elif args.command == "scan":
             if args.scan_action == "crossref":
                 await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report)
+            elif args.scan_action == "results":
+                if args.scan_id:
+                    await cli.scan_results_details(args.scan_id)
+                else:
+                    await cli.scan_results_list(args.limit)
                 
         elif args.command == "health":
             if args.health_action == "check":

@@ -9,6 +9,7 @@ from typing import Optional
 
 from .config import ConfigLoader, Config, ConfigError
 from .core.usecases import SecurityScanner
+from .core.usecases.scan_results import ScanResultsManager
 from .core.usecases.security_analysis import SecurityAnalysisUseCase
 from .core.usecases.package_management import PackageManagementUseCase
 from .core.usecases.data_management import DataManagementUseCase
@@ -79,6 +80,7 @@ class SecurityScannerApp:
         self.data_management: Optional[DataManagementUseCase] = None
         self.health_management: Optional[HealthManagementUseCase] = None
         self.test_data_management: Optional[TestDataManagementUseCase] = None
+        self.scan_results_manager: Optional[ScanResultsManager] = None
         
         self.logger = logging.getLogger(__name__)
     
@@ -135,6 +137,10 @@ class SecurityScannerApp:
             )
             
             self.test_data_management = TestDataManagementUseCase(
+                storage_service=self.services["storage_service"]
+            )
+            
+            self.scan_results_manager = ScanResultsManager(
                 storage_service=self.services["storage_service"]
             )
             
@@ -308,6 +314,72 @@ class SecurityScannerApp:
             raise RuntimeError("Application not initialized")
         
         return await self.data_management.get_scan_logs(limit, filter_level)
+    
+    async def get_recent_scan_summaries(self, limit: int = 3) -> dict:
+        """
+        Get recent scan summaries.
+        
+        Args:
+            limit: Maximum number of scans to return
+            
+        Returns:
+            Dictionary containing scan summaries and metadata
+        """
+        if not self.scan_results_manager:
+            raise RuntimeError("Application not initialized")
+        
+        try:
+            summaries = await self.scan_results_manager.get_recent_scans(limit)
+            return {
+                "success": True,
+                "summaries": summaries,
+                "count": len(summaries)
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "summaries": [],
+                "count": 0
+            }
+    
+    async def get_scan_result_details(self, scan_id: str) -> dict:
+        """
+        Get detailed scan result with findings.
+        
+        Args:
+            scan_id: Unique identifier of the scan
+            
+        Returns:
+            Dictionary containing detailed scan result
+        """
+        if not self.scan_results_manager:
+            raise RuntimeError("Application not initialized")
+        
+        try:
+            details = await self.scan_results_manager.get_scan_details(scan_id)
+            if not details:
+                return {
+                    "success": False,
+                    "error": f"Scan not found: {scan_id}",
+                    "details": None
+                }
+            
+            return {
+                "success": True,
+                "details": details,
+                "scan_result": details.scan_result,
+                "findings": details.findings,
+                "found_matches": details.found_matches,
+                "safe_packages": details.safe_packages,
+                "not_found_count": details.not_found_count
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "details": None
+            }
     
     async def fetch_packages_feed_data(self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48) -> dict:
         """

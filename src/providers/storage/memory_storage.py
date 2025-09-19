@@ -173,6 +173,24 @@ class MemoryStorage(StorageService):
                 logger.error(f"Failed to store malicious packages: {e}")
                 raise StorageError(f"Failed to store malicious packages: {e}") from e
     
+    async def get_scan_summary(self, limit: Optional[int] = None) -> List[dict]:
+        """
+        Get scan summaries with basic metadata.
+        
+        This method is not supported by memory storage - scan results feature 
+        is only available with database storage.
+        
+        Args:
+            limit: Maximum number of scan summaries to return
+            
+        Raises:
+            NotImplementedError: Memory storage doesn't support scan summaries
+        """
+        raise NotImplementedError(
+            "Scan results functionality is only supported by database storage. "
+            "Please configure the application to use DatabaseStorage to access scan summaries."
+        )
+    
     async def health_check(self) -> bool:
         """
         Check if the memory storage is healthy and accessible.
