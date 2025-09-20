@@ -56,6 +56,75 @@ class NullRegistry(PackagesRegistryService):
         logger.debug(f"NullRegistry: Would unblock {len(packages)} packages (registry disabled)")
         return []
     
+    async def block_package(self, package: MaliciousPackage) -> bool:
+        """
+        Block a single package (no-op).
+        
+        Args:
+            package: Package to block
+            
+        Returns:
+            False (no package blocked)
+        """
+        logger.debug(f"NullRegistry: Would block package {package.name} (registry disabled)")
+        return False
+    
+    async def search_packages(self, package_name: str, ecosystem: str) -> List[dict]:
+        """
+        Search for packages (no-op).
+        
+        Args:
+            package_name: Name of package to search for
+            ecosystem: Package ecosystem
+            
+        Returns:
+            Empty list (no packages found)
+        """
+        logger.debug(f"NullRegistry: Would search for {package_name} in {ecosystem} (registry disabled)")
+        return []
+    
+    async def is_package_blocked(self, package: MaliciousPackage) -> bool:
+        """
+        Check if package is blocked (no-op).
+        
+        Args:
+            package: Package to check
+            
+        Returns:
+            False (no packages are blocked)
+        """
+        logger.debug(f"NullRegistry: Would check if {package.name} is blocked (registry disabled)")
+        return False
+    
+    def get_registry_name(self) -> str:
+        """
+        Get registry name.
+        
+        Returns:
+            Registry name
+        """
+        return "Null Registry (Disabled)"
+    
+    async def discover_repositories_by_ecosystem(self, ecosystem: str) -> List[str]:
+        """
+        Discover repositories (no-op).
+        
+        Args:
+            ecosystem: Package ecosystem
+            
+        Returns:
+            Empty list (no repositories)
+        """
+        logger.debug(f"NullRegistry: Would discover repositories for {ecosystem} (registry disabled)")
+        return []
+    
+    async def close(self) -> None:
+        """
+        Close registry connection (no-op).
+        """
+        logger.debug("NullRegistry: Would close connection (registry disabled)")
+        pass
+    
     async def health_check(self) -> bool:
         """
         Check service health.
