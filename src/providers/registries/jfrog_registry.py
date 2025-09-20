@@ -280,9 +280,6 @@ class JFrogRegistry(PackagesRegistryService):
                     if update_response.status in [200, 201]:
                         logger.info(f"Updated exclusion patterns for repository {repo_name}")
                         
-                        # Try to update repository notes to indicate Malifiscan management
-                        await self._update_repository_metadata(session, repo_name, new_patterns)
-                        
                         return len(new_patterns)
                     else:
                         response_text = await update_response.text()
@@ -559,52 +556,6 @@ class JFrogRegistry(PackagesRegistryService):
         # Filter out patterns to remove
         remaining = [p for p in existing if p not in remove_set]
         return ",".join(remaining)
-    
-    async def _update_repository_metadata(self, session: aiohttp.ClientSession, repo_name: str, new_patterns: List[str]) -> None:
-        """
-        Update repository metadata to indicate Malifiscan management.
-        
-        Args:
-            session: HTTP session
-            repo_name: Repository name
-            new_patterns: List of patterns that were added
-        """
-        try:
-            repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
-            
-            # Get current repository configuration
-            async with session.get(repo_config_url) as response:
-                if response.status != 200:
-                    logger.warning(f"Could not retrieve repository config for metadata update: {response.status}")
-                    return
-                
-                repo_config = await response.json()
-            
-            # Update notes field to indicate Malifiscan management
-            current_notes = repo_config.get('notes', '').strip()
-            malifiscan_marker = "🛡️ Malifiscan Security Scanner"
-            
-            if malifiscan_marker not in current_notes:
-                # Add our marker and information about managed exclusions
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
-                new_note = f"\n\n{malifiscan_marker} - Managing exclusion patterns for security.\nLast updated: {timestamp}\nPatterns added: {len(new_patterns)}"
-                
-                if current_notes:
-                    updated_notes = current_notes + new_note
-                else:
-                    updated_notes = new_note.strip()
-                
-                # Update only the notes field
-                metadata_payload = {'notes': updated_notes}
-                
-                async with session.post(repo_config_url, json=metadata_payload) as update_response:
-                    if update_response.status in [200, 201]:
-                        logger.info(f"Updated repository metadata for {repo_name}")
-                    else:
-                        logger.warning(f"Could not update repository metadata: {update_response.status}")
-            
-        except Exception as e:
-            logger.warning(f"Could not update repository metadata for {repo_name}: {e}")
     
     def _get_repository_name(self, ecosystem: str) -> Optional[str]:
         """Get JFrog repository name for ecosystem."""

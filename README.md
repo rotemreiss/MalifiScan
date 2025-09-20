@@ -24,7 +24,6 @@ When you block a package, Malifiscan:
 1. **Generates specific patterns** for the malicious package (e.g., `axios/-/axios-1.12.2.tgz`)
 2. **Updates repository configuration** by adding patterns to the `excludesPattern` field
 3. **Preserves existing patterns** using safe union-based merging
-4. **Adds metadata** to repository notes for admin traceability
 
 ### Blocking Commands
 
@@ -45,7 +44,6 @@ uv run python cli.py registry unblock axios npm 1.12.2
 ### Safety Features
 
 - **Pattern Preservation**: Existing exclusion patterns are never overwritten
-- **Repository Metadata**: Clear attribution shows Malifiscan-managed patterns
 - **Granular Control**: Block specific versions or entire packages
 - **Audit Trail**: All blocking operations are logged and traceable
 

@@ -29,4 +29,4 @@ jobs:
       run: uv sync --dev
 
     - name: Run unit tests
-      run: uv run pytest --ignore=tests/integration/ --cov=src --cov-report=term-missing
+      run: uv run python -m pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
