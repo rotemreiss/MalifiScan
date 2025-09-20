@@ -51,7 +51,7 @@ uv run python cli.py registry unblock axios npm 1.12.2
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - JFrog Artifactory instance with API access
 - Internet connectivity for OSV database access
 

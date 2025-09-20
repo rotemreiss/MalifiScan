@@ -25,12 +25,6 @@ src/
 
 ## 🚀 Development Setup
 
-### Prerequisites
-
-- Python 3.8+ 
-- JFrog Artifactory instance
-- Git
-
 ### Installation
 
 #### Option 1: Using UV (Recommended for Development)
@@ -52,33 +46,8 @@ UV provides faster dependency resolution and better development experience.
 
 3. **Configure the application**
    ```bash
-   # Create .env file from example (if available)
-   cp .env.example .env  # If .env.example exists
-   
-   # Or create a new .env file with the following content:
-   cat > .env << 'EOF'
-# JFrog Artifactory Configuration
-JFROG_BASE_URL=https://your-company.jfrog.io
-JFROG_ACCESS_TOKEN=your-access-token
-JFROG_REPOSITORY=your-repo-name
-
-# Scanner Configuration  
-SCAN_INTERVAL_HOURS=24
-LOG_LEVEL=INFO
-STORAGE_TYPE=memory
-
-# OSV Database Configuration
-OSV_API_BASE_URL=https://api.osv.dev
-OSV_BATCH_SIZE=100
-EOF
-   
-   # Edit .env with your actual credentials
-   vim .env  # or your preferred editor
-   ```
-
-4. **Make CLI executable**
-   ```bash
-   chmod +x cli.py
+   # Create .env file from example (if available) or create new one
+   cp .env.example .env  # Edit .env with your JFrog details after copying it.
    ```
 
 #### Option 2: Using pip (Traditional)
@@ -104,16 +73,8 @@ EOF
 
 3. **Configure the application**
    ```bash
-   # Create .env file from example (if available)
-   cp .env.example .env  # If .env.example exists
-   
-   # Or create a new .env file manually
-   # Edit .env with your actual credentials
-   ```
-
-4. **Make CLI executable**
-   ```bash
-   chmod +x cli.py
+   # Create .env file from example (if available) or create new one
+   cp .env.example .env  # Edit .env with your JFrog details after copying it.
    ```
 
 #### Verification
@@ -146,30 +107,7 @@ SCANNER_INTERVAL_HOURS=1
 
 ### Configuration File (config.yaml)
 
-The `config.yaml` file controls provider types, storage options, and other settings:
-
-```yaml
-# Enable/disable services
-packages_feed:
-  type: osv
-  enabled: true
-
-packages_registry:
-  type: jfrog  
-  enabled: true
-
-notification_service:
-  type: null  # Future: teams, webhook, etc.
-  enabled: false
-
-storage_service:
-  type: file  # or 'database' for SQLite
-  enabled: true
-
-scheduler:
-  enabled: true
-  interval_hours: 1
-```
+The `config.yaml` file controls provider types, storage options, and other settings.
 
 ## 🔄 Development Workflow
 
@@ -568,42 +506,6 @@ The application provides structured logging:
 - **PackagesRegistryService**: Abstract interface for package registries
 - **NotificationService**: Abstract interface for notifications
 - **StorageService**: Abstract interface for data persistence
-
-## 🚀 Deployment
-
-### Docker Deployment
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY src/ src/
-COPY config.yaml .env ./
-
-CMD ["python", "-m", "src.main"]
-```
-
-### Systemd Service
-
-```ini
-[Unit]
-Description=Security Scanner
-After=network.target
-
-[Service]
-Type=simple
-User=scanner
-WorkingDirectory=/opt/security-scanner
-ExecStart=/opt/security-scanner/venv/bin/python -m src.main
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
 
 ## 🆘 Troubleshooting
 
