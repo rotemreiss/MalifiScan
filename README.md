@@ -125,6 +125,10 @@ UV is a fast Python package manager that provides better dependency resolution a
    python cli.py health check
    ```
 
+#### Option 3: Using Docker
+
+**Quick Start:** `docker run --env-file .env rotemreiss/malifiscan python cli.py health check`. All data is ephemeral unless you mount a volume: `docker run --env-file .env -v $(pwd)/data:/app/data rotemreiss/malifiscan python cli.py scan crossref`.
+
 ## 📋 Usage
 
 The tool provides two entry points with support for both UV and traditional Python environments:
@@ -227,6 +231,10 @@ python cli.py scan test
 ```
 Runs a test scan with known packages to validate the system.
 
+#### Using Docker
+
+Replace `python cli.py` with `docker run --env-file .env rotemreiss/malifiscan python cli.py` for any command. Add `-v $(pwd)/data:/app/data` for persistent storage.
+
 ### Simplified Entry Point (python -m src.main)
 
 **Basic Health Check**
@@ -256,6 +264,8 @@ For scheduled scans, use the core entry point:
 # Daily health check
 0 9 * * * cd /path/to/malifiscan && python -m src.main --status
 ```
+
+**Docker:** Replace `python` with `docker run --rm --env-file .env -v $(pwd)/data:/app/data rotemreiss/malifiscan python` in cron commands above.
 
 ## 🧪 Testing
 
