@@ -23,7 +23,20 @@ packages_registry:
     timeout_seconds: 30
     max_retries: 3
     retry_delay: 1.0
-    # Additional JFrog-specific configuration can be added here
+    # Repository discovery configuration
+    repository_discovery:
+      enabled: true
+      cache_ttl_seconds: 3600  # Cache repository mappings for 1 hour
+      # Manual repository overrides for specific ecosystems
+      # This avoids API calls for repository discovery if you know the repo names
+      ecosystem_overrides:
+        npm: "my-npm"
+        # PyPI: "python-packages"
+        # Maven: "maven-central"
+        # Go: "go-proxy"
+        # NuGet: "nuget-packages"
+        # RubyGems: "gems-proxy"
+        # crates.io: "cargo-remote"
 
 # Notification Service Configuration
 notification_service:

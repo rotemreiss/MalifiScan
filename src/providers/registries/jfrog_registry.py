@@ -1,9 +1,10 @@
-"""JFrog Artifactory registry provider."""
+"""JFrog Artifactory registry provider using exclusion patterns."""
 
 import asyncio
 import logging
 import base64
-from typing import List, Dict, Any, Optional
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Set
 import aiohttp
 from aiohttp import ClientTimeout
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class JFrogRegistry(PackagesRegistryService):
-    """JFrog Artifactory registry provider."""
+    """JFrog Artifactory registry provider using exclusion patterns for prevention."""
     
     def __init__(
         self,
@@ -26,7 +27,9 @@ class JFrogRegistry(PackagesRegistryService):
         api_key: Optional[str] = None,
         timeout_seconds: int = 30,
         max_retries: int = 3,
-        retry_delay: float = 1.0
+        retry_delay: float = 1.0,
+        repository_overrides: Optional[Dict[str, str]] = None,
+        cache_ttl_seconds: int = 3600
     ):
         """
         Initialize JFrog registry provider.
@@ -39,6 +42,8 @@ class JFrogRegistry(PackagesRegistryService):
             timeout_seconds: Request timeout in seconds
             max_retries: Maximum number of retry attempts
             retry_delay: Delay between retries in seconds
+            repository_overrides: Manual repository name overrides by ecosystem
+            cache_ttl_seconds: Cache TTL for repository discovery
         """
         self.base_url = base_url.rstrip('/')
         self.username = username
@@ -47,7 +52,11 @@ class JFrogRegistry(PackagesRegistryService):
         self.timeout = ClientTimeout(total=timeout_seconds)
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.repository_overrides = repository_overrides or {}
+        self.cache_ttl_seconds = cache_ttl_seconds
         self._session: Optional[aiohttp.ClientSession] = None
+        self._repository_cache: Dict[str, List[str]] = {}
+        self._cache_timestamps: Dict[str, float] = {}
         
         # Validate authentication
         if not api_key and not (username and password):
@@ -66,24 +75,21 @@ class JFrogRegistry(PackagesRegistryService):
     def _get_auth_headers(self) -> Dict[str, str]:
         """Get authentication headers for JFrog API."""
         headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Content-Type": "application/json"
+            # Note: Don't set Accept header for repository updates - causes 406 errors
         }
         
         if self.api_key:
-            # Use Bearer token for JWT-based API keys
             headers["Authorization"] = f"Bearer {self.api_key}"
         elif self.username and self.password:
-            # Basic authentication
-            credentials = f"{self.username}:{self.password}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded_credentials}"
+            credentials = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
+            headers["Authorization"] = f"Basic {credentials}"
         
         return headers
     
     async def block_packages(self, packages: List[MaliciousPackage]) -> List[str]:
         """
-        Block malicious packages in JFrog Artifactory.
+        Block malicious packages using exclusion patterns.
         
         Args:
             packages: List of malicious packages to block
@@ -94,29 +100,35 @@ class JFrogRegistry(PackagesRegistryService):
         Raises:
             RegistryError: If blocking operation fails
         """
-        logger.info(f"Blocking {len(packages)} packages in JFrog Artifactory")
+        logger.info(f"Blocking {len(packages)} packages using exclusion patterns")
         
+        # Group packages by ecosystem for batch processing
+        packages_by_ecosystem = self._group_packages_by_ecosystem(packages)
         blocked_packages = []
         
-        for package in packages:
+        for ecosystem, ecosystem_packages in packages_by_ecosystem.items():
             try:
-                success = await self._block_single_package(package)
-                if success:
-                    blocked_packages.append(package.package_identifier)
-                    logger.debug(f"Successfully blocked package: {package.package_identifier}")
-                else:
-                    logger.warning(f"Failed to block package: {package.package_identifier}")
-            
+                repos = await self.discover_repositories_by_ecosystem(ecosystem)
+                if not repos:
+                    logger.warning(f"No repositories found for ecosystem: {ecosystem}")
+                    continue
+                
+                # Apply exclusion patterns to all relevant repositories
+                for repo_name in repos:
+                    success_count = await self._add_exclusion_patterns(repo_name, ecosystem_packages)
+                    if success_count > 0:
+                        blocked_packages.extend([pkg.package_identifier for pkg in ecosystem_packages[:success_count]])
+                        
             except Exception as e:
-                logger.error(f"Error blocking package {package.package_identifier}: {e}")
-                # Continue with other packages
+                logger.error(f"Failed to block packages for ecosystem {ecosystem}: {e}")
+                raise RegistryError(f"Failed to block packages for ecosystem {ecosystem}") from e
         
         logger.info(f"Successfully blocked {len(blocked_packages)} out of {len(packages)} packages")
         return blocked_packages
     
     async def block_package(self, package: MaliciousPackage) -> bool:
         """
-        Block a single malicious package in the registry.
+        Block a single malicious package using exclusion patterns.
         
         Args:
             package: Malicious package to block
@@ -130,173 +142,346 @@ class JFrogRegistry(PackagesRegistryService):
         logger.info(f"Blocking package: {package.package_identifier}")
         
         try:
-            success = await self._block_single_package(package)
-            if success:
-                logger.info(f"Successfully blocked package: {package.package_identifier}")
-            else:
-                logger.warning(f"Failed to block package: {package.package_identifier}")
-            return success
+            repos = await self.discover_repositories_by_ecosystem(package.ecosystem)
+            if not repos:
+                logger.warning(f"No repositories found for ecosystem: {package.ecosystem}")
+                return False
+            
+            # Apply exclusion pattern to all relevant repositories
+            blocked_any = False
+            for repo_name in repos:
+                success = await self._add_exclusion_patterns(repo_name, [package])
+                if success > 0:
+                    blocked_any = True
+            
+            return blocked_any
+            
         except Exception as e:
-            logger.error(f"Error blocking package {package.package_identifier}: {e}")
-            raise RegistryError(f"Failed to block package {package.package_identifier}: {e}") from e
+            logger.error(f"Failed to block package {package.package_identifier}: {e}")
+            raise RegistryError(f"Failed to block package {package.package_identifier}") from e
     
-    async def _block_single_package(self, package: MaliciousPackage) -> bool:
-        """Block a single package in JFrog Artifactory."""
+    async def discover_repositories_by_ecosystem(self, ecosystem: str) -> List[str]:
+        """
+        Discover repository names for a given ecosystem.
+        
+        Args:
+            ecosystem: Package ecosystem (npm, PyPI, etc.)
+            
+        Returns:
+            List of repository names that handle this ecosystem
+        """
+        # Check for manual override first
+        if ecosystem in self.repository_overrides:
+            override_repo = self.repository_overrides[ecosystem]
+            logger.info(f"Using configured repository override for {ecosystem}: {override_repo}")
+            return [override_repo]
+        
+        # Check cache with TTL
+        current_time = asyncio.get_event_loop().time()
+        if ecosystem in self._repository_cache:
+            cache_time = self._cache_timestamps.get(ecosystem, 0)
+            if current_time - cache_time < self.cache_ttl_seconds:
+                return self._repository_cache[ecosystem]
+        
         session = await self._get_session()
+        repos_url = f"{self.base_url}/artifactory/api/repositories"
         
-        # Get repository name based on ecosystem
-        repo_name = self._get_repository_name(package.ecosystem)
-        if not repo_name:
-            logger.warning(f"No repository mapping for ecosystem: {package.ecosystem}")
-            return False
-        
-        # JFrog Artifactory API endpoint for setting properties
-        # We'll use properties to mark packages as blocked
-        package_path = self._get_package_path(package)
-        properties_url = f"{self.base_url}/artifactory/api/storage/{repo_name}/{package_path}"
-        
-        # Set properties to mark as malicious/blocked
-        properties = {
-            "properties": {
-                "security.malicious": ["true"],
-                "security.blocked": ["true"],
-                "security.reason": [f"Malicious package identified by security scanner"],
-                "security.advisory_id": [package.advisory_id or "unknown"],
-                "security.blocked_date": [str(asyncio.get_event_loop().time())]
-            }
+        try:
+            async with session.get(repos_url) as response:
+                if response.status != 200:
+                    logger.error(f"Failed to fetch repositories: {response.status}")
+                    return []
+                
+                repositories = await response.json()
+                matching_repos = []
+                
+                for repo in repositories:
+                    repo_type = repo.get('packageType', '').lower()
+                    repo_class = repo.get('rclass', '')
+                    
+                    if self._ecosystem_matches_package_type(ecosystem, repo_type):
+                        # Include all repository types for exclusion patterns
+                        matching_repos.append(repo['key'])
+                        logger.info(f"Found {ecosystem} repository: {repo['key']} ({repo_class})")
+                
+                # Update cache
+                self._repository_cache[ecosystem] = matching_repos
+                self._cache_timestamps[ecosystem] = current_time
+                return matching_repos
+                
+        except Exception as e:
+            logger.error(f"Error discovering repositories for {ecosystem}: {e}")
+            return []
+    
+    def _ecosystem_matches_package_type(self, ecosystem: str, package_type: str) -> bool:
+        """Map OSV ecosystems to Artifactory package types."""
+        ecosystem_to_package_type = {
+            "npm": "npm",
+            "PyPI": "pypi",
+            "Maven": "maven",
+            "Go": "go",
+            "NuGet": "nuget",
+            "RubyGems": "gems",
+            "crates.io": "cargo",
+            "Packagist": "composer"
         }
+        
+        expected_type = ecosystem_to_package_type.get(ecosystem, "").lower()
+        return package_type == expected_type
+    
+    async def _add_exclusion_patterns(self, repo_name: str, packages: List[MaliciousPackage]) -> int:
+        """
+        Add exclusion patterns for malicious packages to a repository.
+        
+        Args:
+            repo_name: Repository name
+            packages: List of packages to add exclusion patterns for
+            
+        Returns:
+            Number of packages successfully added to exclusion patterns
+        """
+        session = await self._get_session()
+        repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
         
         for attempt in range(self.max_retries + 1):
             try:
-                # First, check if package exists
-                async with session.get(properties_url) as response:
-                    if response.status == 404:
-                        # Package doesn't exist in repository, create a placeholder block
-                        return await self._create_block_entry(session, repo_name, package)
-                    elif response.status != 200:
-                        logger.warning(f"Cannot access package {package.package_identifier}: HTTP {response.status}")
-                        return False
-                
-                # Set blocking properties
-                async with session.put(f"{properties_url}?properties={self._format_properties(properties)}"): 
-                    if response.status in [200, 201]:
-                        return True
-                    elif response.status == 429:  # Rate limited
+                # Get current repository configuration
+                async with session.get(repo_config_url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to get repository config for {repo_name}: {response.status}")
                         if attempt < self.max_retries:
-                            await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                            await asyncio.sleep(self.retry_delay * (attempt + 1))
                             continue
-                        return False
+                        return 0
+                    
+                    repo_config = await response.json()
+                
+                # Generate exclusion patterns for packages
+                new_patterns = []
+                for package in packages:
+                    pattern = self._generate_exclusion_pattern(package)
+                    if pattern:
+                        new_patterns.append(pattern)
+                        logger.info(f"Generated exclusion pattern for {package.package_identifier}: {pattern}")
+                
+                if not new_patterns:
+                    logger.warning(f"No valid exclusion patterns generated for {len(packages)} packages")
+                    return 0
+                
+                # Update excludes pattern in repository configuration
+                current_excludes = repo_config.get('excludesPattern', '')
+                all_patterns = self._merge_exclusion_patterns(current_excludes, new_patterns)
+                
+                # Send only the changed field instead of the entire config
+                update_payload = {'excludesPattern': all_patterns}
+                
+                # Update repository configuration with both pattern and metadata
+                async with session.post(repo_config_url, json=update_payload) as update_response:
+                    if update_response.status in [200, 201]:
+                        logger.info(f"Updated exclusion patterns for repository {repo_name}")
+                        
+                        # Try to update repository notes to indicate Malifiscan management
+                        await self._update_repository_metadata(session, repo_name, new_patterns)
+                        
+                        return len(new_patterns)
                     else:
-                        logger.warning(f"Failed to block package: HTTP {response.status}")
-                        return False
-            
-            except aiohttp.ClientError as e:
+                        response_text = await update_response.text()
+                        logger.error(f"Failed to update repository config: {update_response.status} - {response_text}")
+                        logger.error(f"Request payload: {update_payload}")
+                        if attempt < self.max_retries:
+                            await asyncio.sleep(self.retry_delay * (attempt + 1))
+                            continue
+                        return 0
+                        
+            except Exception as e:
+                logger.error(f"Error updating exclusion patterns (attempt {attempt + 1}): {e}")
                 if attempt < self.max_retries:
-                    await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                    await asyncio.sleep(self.retry_delay * (attempt + 1))
                     continue
-                logger.error(f"Network error blocking package: {e}")
-                return False
+                return 0
         
-        return False
+        return 0
     
-    async def _create_block_entry(self, session: aiohttp.ClientSession, repo_name: str, package: MaliciousPackage) -> bool:
-        """Create a block entry for a package that doesn't exist in the repository."""
-        # Create a marker file to indicate the package is blocked
-        marker_path = f"{self._get_package_path(package)}/.blocked"
-        upload_url = f"{self.base_url}/artifactory/{repo_name}/{marker_path}"
+    def _generate_exclusion_pattern(self, package: MaliciousPackage) -> Optional[str]:
+        """
+        Generate an exclusion pattern for a malicious package.
         
-        block_info = {
-            "blocked": True,
-            "reason": "Malicious package identified by security scanner",
-            "advisory_id": package.advisory_id,
-            "package_name": package.name,
-            "ecosystem": package.ecosystem
-        }
+        Args:
+            package: Malicious package to generate pattern for
+            
+        Returns:
+            Exclusion pattern string or None if not supported
+        """
+        # Generate the base pattern
+        base_pattern = None
         
-        try:
-            async with session.put(upload_url, json=block_info) as response:
-                return response.status in [200, 201]
-        except Exception as e:
-            logger.error(f"Failed to create block entry: {e}")
-            return False
+        if package.ecosystem == "npm":
+            # NPM exclusion patterns
+            if "/" in package.name:  # Scoped package like @scope/package
+                if package.version:
+                    base_pattern = f"{package.name}/-/{package.name.split('/')[-1]}-{package.version}.tgz"
+                else:
+                    base_pattern = f"{package.name}/**"
+            else:
+                if package.version:
+                    base_pattern = f"{package.name}/-/{package.name}-{package.version}.tgz"
+                else:
+                    base_pattern = f"{package.name}/**"
+                    
+        elif package.ecosystem == "PyPI":
+            # PyPI exclusion patterns
+            normalized_name = package.name.lower().replace("_", "-")
+            if package.version:
+                # Block specific version with common file extensions
+                base_pattern = f"simple/{normalized_name}/{normalized_name}-{package.version}*"
+            else:
+                # Block all versions of the package
+                base_pattern = f"simple/{normalized_name}/**"
+                
+        elif package.ecosystem == "Maven":
+            # Maven GAV exclusion patterns
+            if ":" in package.name:
+                parts = package.name.split(":")
+                group_id = parts[0].replace(".", "/")
+                artifact_id = parts[1] if len(parts) > 1 else "*"
+                if package.version and len(parts) > 2:
+                    version = parts[2]
+                    base_pattern = f"{group_id}/{artifact_id}/{version}/**"
+                elif package.version:
+                    base_pattern = f"{group_id}/{artifact_id}/{package.version}/**"
+                else:
+                    base_pattern = f"{group_id}/{artifact_id}/**"
+            else:
+                base_pattern = f"**/{package.name}/**"
+                
+        elif package.ecosystem == "Go":
+            # Go module exclusion patterns
+            if package.version:
+                base_pattern = f"{package.name}/@v/{package.version}*"
+            else:
+                base_pattern = f"{package.name}/**"
+                
+        elif package.ecosystem == "NuGet":
+            # NuGet exclusion patterns
+            if package.version:
+                base_pattern = f"{package.name.lower()}/{package.version}/**"
+            else:
+                base_pattern = f"{package.name.lower()}/**"
+                
+        else:
+            # Generic pattern for unsupported ecosystems
+            logger.warning(f"Unsupported ecosystem for exclusion pattern: {package.ecosystem}")
+            if package.version:
+                base_pattern = f"**/{package.name}/{package.version}/**"
+            else:
+                base_pattern = f"**/{package.name}/**"
+        
+        # Add Malifiscan identifier to the pattern (as a comment-like suffix)
+        # Note: JFrog doesn't support actual comments in patterns, but we can add a descriptive suffix
+        if base_pattern:
+            timestamp = datetime.now().strftime("%Y%m%d")
+            advisory_short = package.advisory_id[:20] if package.advisory_id else "UNKNOWN"
+            # We'll add this as metadata in a different way since patterns don't support comments
+            return base_pattern
+        
+        return None
     
-    def _format_properties(self, properties: Dict[str, Any]) -> str:
-        """Format properties for JFrog API."""
-        # Convert properties dict to query string format
-        prop_parts = []
-        for key, values in properties["properties"].items():
-            for value in values:
-                prop_parts.append(f"{key}={value}")
-        return ";".join(prop_parts)
+    def _merge_exclusion_patterns(self, current_patterns: str, new_patterns: List[str]) -> str:
+        """
+        Merge new exclusion patterns with existing ones.
+        
+        Args:
+            current_patterns: Current exclusion patterns (comma-separated)
+            new_patterns: New patterns to add
+            
+        Returns:
+            Merged patterns string
+        """
+        if not current_patterns:
+            return ",".join(new_patterns)
+        
+        # Split current patterns and remove duplicates
+        existing = set(p.strip() for p in current_patterns.split(",") if p.strip())
+        new_set = set(new_patterns)
+        
+        # Combine and avoid duplicates
+        all_patterns = existing.union(new_set)
+        return ",".join(sorted(all_patterns))
+    
+    def _group_packages_by_ecosystem(self, packages: List[MaliciousPackage]) -> Dict[str, List[MaliciousPackage]]:
+        """Group packages by ecosystem for batch processing."""
+        groups: Dict[str, List[MaliciousPackage]] = {}
+        for package in packages:
+            if package.ecosystem not in groups:
+                groups[package.ecosystem] = []
+            groups[package.ecosystem].append(package)
+        return groups
     
     async def check_existing_packages(self, packages: List[MaliciousPackage]) -> List[MaliciousPackage]:
         """
-        Check which packages are already present/blocked in JFrog Artifactory.
+        Check which packages are affected by current exclusion patterns.
         
         Args:
             packages: List of packages to check
             
         Returns:
-            List of packages that are already present in the registry
+            List of packages that would be blocked by exclusion patterns
         """
-        logger.info(f"Checking {len(packages)} packages in JFrog Artifactory")
+        logger.info(f"Checking exclusion patterns for {len(packages)} packages")
         
-        existing_packages = []
+        blocked_packages = []
+        packages_by_ecosystem = self._group_packages_by_ecosystem(packages)
         
-        for package in packages:
-            try:
-                is_existing = await self._check_single_package(package)
-                if is_existing:
-                    existing_packages.append(package)
-                    logger.debug(f"Package already exists: {package.package_identifier}")
+        for ecosystem, ecosystem_packages in packages_by_ecosystem.items():
+            repos = await self.discover_repositories_by_ecosystem(ecosystem)
             
-            except Exception as e:
-                logger.error(f"Error checking package {package.package_identifier}: {e}")
-                # Continue with other packages
+            for repo_name in repos:
+                excluded_in_repo = await self._check_exclusion_patterns(repo_name, ecosystem_packages)
+                blocked_packages.extend(excluded_in_repo)
         
-        logger.info(f"Found {len(existing_packages)} existing packages out of {len(packages)}")
-        return existing_packages
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_blocked = []
+        for pkg in blocked_packages:
+            if pkg.package_identifier not in seen:
+                seen.add(pkg.package_identifier)
+                unique_blocked.append(pkg)
+        
+        logger.info(f"Found {len(unique_blocked)} packages affected by exclusion patterns")
+        return unique_blocked
     
-    async def _check_single_package(self, package: MaliciousPackage) -> bool:
-        """Check if a single package exists or is blocked in JFrog Artifactory."""
+    async def _check_exclusion_patterns(self, repo_name: str, packages: List[MaliciousPackage]) -> List[MaliciousPackage]:
+        """Check which packages are blocked by repository exclusion patterns."""
         session = await self._get_session()
+        repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
         
-        repo_name = self._get_repository_name(package.ecosystem)
-        if not repo_name:
-            return False
-        
-        package_path = self._get_package_path(package)
-        
-        # Check for actual package or block marker
-        urls_to_check = [
-            f"{self.base_url}/artifactory/api/storage/{repo_name}/{package_path}",
-            f"{self.base_url}/artifactory/api/storage/{repo_name}/{package_path}/.blocked"
-        ]
-        
-        for url in urls_to_check:
-            try:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        # Check if it's marked as blocked
-                        if "blocked" in url:
-                            return True
-                        
-                        # Check properties for blocking status
-                        data = await response.json()
-                        properties = data.get("properties", {})
-                        if properties.get("security.blocked") == ["true"]:
-                            return True
-                        
-                        return True  # Package exists
-            
-            except Exception:
-                continue
-        
-        return False
+        try:
+            async with session.get(repo_config_url) as response:
+                if response.status != 200:
+                    return []
+                
+                repo_config = await response.json()
+                excludes_pattern = repo_config.get('excludesPattern', '')
+                
+                if not excludes_pattern:
+                    return []
+                
+                # Check which packages match the exclusion patterns
+                blocked_packages = []
+                for package in packages:
+                    package_pattern = self._generate_exclusion_pattern(package)
+                    if package_pattern and package_pattern in excludes_pattern:
+                        blocked_packages.append(package)
+                
+                return blocked_packages
+                
+        except Exception as e:
+            logger.error(f"Error checking exclusion patterns for {repo_name}: {e}")
+            return []
     
     async def unblock_packages(self, packages: List[MaliciousPackage]) -> List[str]:
         """
-        Unblock packages in JFrog Artifactory.
+        Remove packages from exclusion patterns.
         
         Args:
             packages: List of packages to unblock
@@ -304,60 +489,122 @@ class JFrogRegistry(PackagesRegistryService):
         Returns:
             List of package identifiers that were successfully unblocked
         """
-        logger.info(f"Unblocking {len(packages)} packages in JFrog Artifactory")
+        logger.info(f"Unblocking {len(packages)} packages from exclusion patterns")
         
+        packages_by_ecosystem = self._group_packages_by_ecosystem(packages)
         unblocked_packages = []
         
-        for package in packages:
-            try:
-                success = await self._unblock_single_package(package)
-                if success:
-                    unblocked_packages.append(package.package_identifier)
-                    logger.debug(f"Successfully unblocked package: {package.package_identifier}")
+        for ecosystem, ecosystem_packages in packages_by_ecosystem.items():
+            repos = await self.discover_repositories_by_ecosystem(ecosystem)
             
-            except Exception as e:
-                logger.error(f"Error unblocking package {package.package_identifier}: {e}")
+            for repo_name in repos:
+                success_count = await self._remove_exclusion_patterns(repo_name, ecosystem_packages)
+                if success_count > 0:
+                    unblocked_packages.extend([pkg.package_identifier for pkg in ecosystem_packages[:success_count]])
         
         logger.info(f"Successfully unblocked {len(unblocked_packages)} packages")
         return unblocked_packages
     
-    async def _unblock_single_package(self, package: MaliciousPackage) -> bool:
-        """Unblock a single package in JFrog Artifactory."""
+    async def _remove_exclusion_patterns(self, repo_name: str, packages: List[MaliciousPackage]) -> int:
+        """Remove exclusion patterns for packages from repository configuration."""
         session = await self._get_session()
-        
-        repo_name = self._get_repository_name(package.ecosystem)
-        if not repo_name:
-            return False
-        
-        package_path = self._get_package_path(package)
-        
-        # Remove blocking properties
-        properties_url = f"{self.base_url}/artifactory/api/storage/{repo_name}/{package_path}"
-        properties_to_remove = [
-            "security.malicious",
-            "security.blocked", 
-            "security.reason",
-            "security.advisory_id",
-            "security.blocked_date"
-        ]
+        repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
         
         try:
-            for prop in properties_to_remove:
-                async with session.delete(f"{properties_url}?properties={prop}") as response:
-                    # Continue even if some properties don't exist
-                    pass
+            # Get current repository configuration
+            async with session.get(repo_config_url) as response:
+                if response.status != 200:
+                    return 0
+                
+                repo_config = await response.json()
             
-            # Remove block marker file if it exists
-            marker_url = f"{self.base_url}/artifactory/{repo_name}/{package_path}/.blocked"
-            async with session.delete(marker_url) as response:
-                # Ignore errors - marker might not exist
-                pass
+            # Generate patterns to remove
+            patterns_to_remove = []
+            for package in packages:
+                pattern = self._generate_exclusion_pattern(package)
+                if pattern:
+                    patterns_to_remove.append(pattern)
             
-            return True
-        
+            if not patterns_to_remove:
+                return 0
+            
+            # Remove patterns from exclusion list
+            current_excludes = repo_config.get('excludesPattern', '')
+            updated_excludes = self._remove_patterns_from_exclusions(current_excludes, patterns_to_remove)
+            
+            # Send only the changed field instead of the entire config
+            update_payload = {'excludesPattern': updated_excludes}
+            
+            # Update repository configuration
+            async with session.post(repo_config_url, json=update_payload) as update_response:
+                if update_response.status in [200, 201]:
+                    logger.info(f"Removed exclusion patterns from repository {repo_name}")
+                    return len(patterns_to_remove)
+                else:
+                    logger.error(f"Failed to update repository config: {update_response.status}")
+                    return 0
+                    
         except Exception as e:
-            logger.error(f"Failed to unblock package: {e}")
-            return False
+            logger.error(f"Error removing exclusion patterns: {e}")
+            return 0
+    
+    def _remove_patterns_from_exclusions(self, current_patterns: str, patterns_to_remove: List[str]) -> str:
+        """Remove specific patterns from exclusion string."""
+        if not current_patterns:
+            return ""
+        
+        existing = [p.strip() for p in current_patterns.split(",") if p.strip()]
+        remove_set = set(patterns_to_remove)
+        
+        # Filter out patterns to remove
+        remaining = [p for p in existing if p not in remove_set]
+        return ",".join(remaining)
+    
+    async def _update_repository_metadata(self, session: aiohttp.ClientSession, repo_name: str, new_patterns: List[str]) -> None:
+        """
+        Update repository metadata to indicate Malifiscan management.
+        
+        Args:
+            session: HTTP session
+            repo_name: Repository name
+            new_patterns: List of patterns that were added
+        """
+        try:
+            repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
+            
+            # Get current repository configuration
+            async with session.get(repo_config_url) as response:
+                if response.status != 200:
+                    logger.warning(f"Could not retrieve repository config for metadata update: {response.status}")
+                    return
+                
+                repo_config = await response.json()
+            
+            # Update notes field to indicate Malifiscan management
+            current_notes = repo_config.get('notes', '').strip()
+            malifiscan_marker = "🛡️ Malifiscan Security Scanner"
+            
+            if malifiscan_marker not in current_notes:
+                # Add our marker and information about managed exclusions
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M UTC")
+                new_note = f"\n\n{malifiscan_marker} - Managing exclusion patterns for security.\nLast updated: {timestamp}\nPatterns added: {len(new_patterns)}"
+                
+                if current_notes:
+                    updated_notes = current_notes + new_note
+                else:
+                    updated_notes = new_note.strip()
+                
+                # Update only the notes field
+                metadata_payload = {'notes': updated_notes}
+                
+                async with session.post(repo_config_url, json=metadata_payload) as update_response:
+                    if update_response.status in [200, 201]:
+                        logger.info(f"Updated repository metadata for {repo_name}")
+                    else:
+                        logger.warning(f"Could not update repository metadata: {update_response.status}")
+            
+        except Exception as e:
+            logger.warning(f"Could not update repository metadata for {repo_name}: {e}")
     
     def _get_repository_name(self, ecosystem: str) -> Optional[str]:
         """Get JFrog repository name for ecosystem."""
@@ -373,29 +620,18 @@ class JFrogRegistry(PackagesRegistryService):
         }
         return ecosystem_mapping.get(ecosystem)
     
-    def _get_package_path(self, package: MaliciousPackage) -> str:
-        """Get package path for ecosystem."""
-        if package.ecosystem == "PyPI":
-            # PyPI path format: simple/package-name/
-            return f"simple/{package.name.lower()}/"
-        elif package.ecosystem == "npm":
-            # npm path format: package-name or @scope/package-name  
-            return package.name
-        elif package.ecosystem == "Maven":
-            # Maven path format: group/artifact/version
-            # For simplicity, use package name as artifact
-            parts = package.name.split(":")
-            if len(parts) >= 2:
-                return f"{parts[0].replace('.', '/')}/{parts[1]}"
-            else:
-                return package.name.replace(".", "/")
-        else:
-            # Generic path
-            return package.name
-    
     async def is_package_blocked(self, package: MaliciousPackage) -> bool:
-        """Check if a package is blocked in JFrog Artifactory."""
-        return await self._check_single_package(package)
+        """
+        Check if a package is blocked by exclusion patterns.
+        
+        Args:
+            package: Package to check
+            
+        Returns:
+            True if package is blocked, False otherwise
+        """
+        blocked_packages = await self.check_existing_packages([package])
+        return len(blocked_packages) > 0
     
     async def search_packages(self, package_name: str, ecosystem: str) -> List[Dict[str, Any]]:
         """
@@ -499,8 +735,7 @@ class JFrogRegistry(PackagesRegistryService):
                     logger.info(f"Found {len(formatted_results)} packages matching '{package_name}' in {ecosystem}")
                     return formatted_results
                 else:
-                    error_text = await response.text()
-                    logger.error(f"AQL search failed: {response.status} - {error_text}")
+                    logger.error(f"AQL search failed: {response.status}")
                     return []
                     
         except Exception as e:
@@ -532,12 +767,7 @@ class JFrogRegistry(PackagesRegistryService):
             return False
     
     def get_registry_name(self) -> str:
-        """
-        Get the display name of the registry.
-        
-        Returns:
-            Human-readable name of the registry
-        """
+        """Get the registry name for identification."""
         return "JFrog Artifactory"
     
     async def close(self):
@@ -545,11 +775,11 @@ class JFrogRegistry(PackagesRegistryService):
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
-
+    
     async def __aenter__(self):
         """Async context manager entry."""
         return self
-
+    
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()

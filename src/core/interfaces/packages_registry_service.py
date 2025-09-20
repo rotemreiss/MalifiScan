@@ -127,6 +127,22 @@ class PackagesRegistryService(ABC):
         pass
     
     @abstractmethod
+    async def discover_repositories_by_ecosystem(self, ecosystem: str) -> List[str]:
+        """
+        Discover repository names for a given ecosystem.
+        
+        Args:
+            ecosystem: Package ecosystem (npm, PyPI, etc.)
+            
+        Returns:
+            List of repository names that handle this ecosystem
+            
+        Raises:
+            RegistryError: If discovery operation fails
+        """
+        pass
+    
+    @abstractmethod
     async def close(self) -> None:
         """
         Close the registry connection and cleanup resources.

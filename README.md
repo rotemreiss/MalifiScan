@@ -7,9 +7,47 @@ A security tool that detects malicious packages from external vulnerability feed
 - **OSV Feed Integration**: Fetches malicious package data from Google Cloud Storage OSV vulnerability database
 - **JFrog Artifactory Search**: Searches for packages in your Artifactory repositories using AQL (Artifactory Query Language)
 - **Security Cross-Reference**: Compares OSV malicious packages against your JFrog repositories to identify potential threats
+- **Package Blocking**: Block malicious packages using JFrog Artifactory exclusion patterns to prevent downloads
+- **Package Management**: View, block, and unblock packages with enterprise-grade safety features
 - **Time-Based Filtering**: Configurable time window for fetching recent malicious packages (default: 48 hours)
 - **Rich CLI Interface**: Interactive command-line interface with progress bars and formatted output
 - **Comprehensive Health Checks**: Validates connectivity to OSV and JFrog services
+
+## 🚫 Package Blocking & Security
+
+Malifiscan can automatically block malicious packages in your JFrog Artifactory repositories using **exclusion patterns**. This prevents developers from downloading compromised packages while preserving existing patterns.
+
+### How Exclusion Patterns Work
+
+When you block a package, Malifiscan:
+
+1. **Generates specific patterns** for the malicious package (e.g., `axios/-/axios-1.12.2.tgz`)
+2. **Updates repository configuration** by adding patterns to the `excludesPattern` field
+3. **Preserves existing patterns** using safe union-based merging
+4. **Adds metadata** to repository notes for admin traceability
+
+### Blocking Commands
+
+```bash
+# Block a specific package version
+uv run python cli.py registry block axios npm 1.12.2
+
+# Block all versions of a package  
+uv run python cli.py registry block malicious-pkg npm "*"
+
+# View currently blocked packages
+uv run python cli.py registry list-blocked npm
+
+# Unblock a package
+uv run python cli.py registry unblock axios npm 1.12.2
+```
+
+### Safety Features
+
+- **Pattern Preservation**: Existing exclusion patterns are never overwritten
+- **Repository Metadata**: Clear attribution shows Malifiscan-managed patterns
+- **Granular Control**: Block specific versions or entire packages
+- **Audit Trail**: All blocking operations are logged and traceable
 
 ## 🚀 Quick Start
 
@@ -26,11 +64,6 @@ A security tool that detects malicious packages from external vulnerability feed
 UV is a fast Python package manager that provides better dependency resolution and faster installs.
 
 1. **Install UV** (if not already installed)
-   ```bash
-   # Using the official installer
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   # Or visit: https://docs.astral.sh/uv/getting-started/installation/
-   ```
 
 2. **Clone and setup the project**
    ```bash
@@ -45,17 +78,7 @@ UV is a fast Python package manager that provides better dependency resolution a
 3. **Configure JFrog connection**
    ```bash
    # Create .env file from example (if available) or create new one
-   cp .env.example .env  # If .env.example exists
-   
-   # Edit .env with your JFrog details:
-   # JFROG_BASE_URL=https://your-company.jfrog.io
-   # JFROG_ACCESS_TOKEN=your-access-token
-   # JFROG_REPOSITORY=your-repo-name
-   ```
-
-4. **Make CLI executable**
-   ```bash
-   chmod +x cli.py
+   cp .env.example .env  # Edit .env with your JFrog details after copying it.
    ```
 
 #### Option 2: Using pip (Traditional)
@@ -77,17 +100,7 @@ UV is a fast Python package manager that provides better dependency resolution a
 2. **Configure JFrog connection**
    ```bash
    # Create .env file from example (if available) or create new one
-   cp .env.example .env  # If .env.example exists
-   
-   # Edit .env with your JFrog details:
-   # JFROG_BASE_URL=https://your-company.jfrog.io
-   # JFROG_ACCESS_TOKEN=your-access-token
-   # JFROG_REPOSITORY=your-repo-name
-   ```
-
-3. **Make CLI executable**
-   ```bash
-   chmod +x cli.py
+   cp .env.example .env  # Edit .env with your JFrog details after copying it.
    ```
 
 #### Environment Configuration
@@ -151,9 +164,14 @@ python -m src.main --status
 uv run python cli.py health check
 
 # Search for packages
-uv run python cli.py jfrog search <package-name>
-uv run python cli.py jfrog search axios
-uv run python cli.py jfrog search react npm
+uv run python cli.py registry search <package-name>
+uv run python cli.py registry search axios npm
+
+# Package blocking and management
+uv run python cli.py registry block <package-name> <ecosystem> <version>
+uv run python cli.py registry block axios npm 1.12.2
+uv run python cli.py registry unblock axios npm 1.12.2
+uv run python cli.py registry list-blocked npm
 
 # Security cross-reference scan
 uv run python cli.py scan crossref
@@ -176,11 +194,24 @@ Validates connection to your JFrog Artifactory instance and other services.
 
 **Search for Packages**
 ```bash
-python cli.py jfrog search <package-name>
-python cli.py jfrog search axios
-python cli.py jfrog search react npm
+python cli.py registry search <package-name>
+python cli.py registry search axios npm
 ```
 Search for specific packages in your JFrog repositories.
+
+**Package Blocking and Management**
+```bash
+# Block malicious packages
+python cli.py registry block <package-name> <ecosystem> <version>
+python cli.py registry block axios npm 1.12.2
+
+# View blocked packages
+python cli.py registry list-blocked npm
+
+# Unblock packages
+python cli.py registry unblock axios npm 1.12.2
+```
+Block, unblock, and manage malicious packages using JFrog exclusion patterns.
 
 **Security Cross-Reference Scan**
 ```bash
@@ -311,12 +342,27 @@ Processing packages ━━━━━━━━━━━━━━━━━━━━
 ✅ Found 2 results for 'axios'
 ```
 
+## ⚡ Performance Considerations
+
+When using exclusion patterns for package blocking:
+
+- **Moderate Impact**: JFrog evaluates exclusion patterns for every artifact request
+- **Recommended Limits**: Monitor performance with 100-500 patterns initially
+- **Pattern Optimization**: Use specific patterns rather than broad wildcards
+- **Monitoring**: Track JFrog performance metrics when implementing at scale
+
+For high-volume repositories, consider:
+- Grouping similar patterns when possible
+- Keeping pattern strings under 10KB total
+- Regular cleanup of obsolete patterns
+
 ## 🔒 Security Notes
 
-- The tool only reads from OSV and searches JFrog repositories
-- No packages are automatically blocked or modified
-- All scans are logged for audit purposes
-- Credentials are only used for JFrog API access
+- **Read-Only Operations**: The tool only reads from OSV and searches JFrog repositories
+- **Manual Blocking**: Packages are only blocked when explicitly requested via CLI commands
+- **Pattern Safety**: Existing exclusion patterns are preserved using union-based merging
+- **Audit Trail**: All scans and blocking operations are logged for audit purposes
+- **Credential Security**: Credentials are only used for JFrog API access and stored locally
 
 ## 📚 Documentation
 

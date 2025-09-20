@@ -203,8 +203,21 @@ class SecurityScannerCLI:
                 self.console.print("❌ Application not initialized", style="red")
                 return False
             
-            # Use the core app for business logic
-            search_result = await self.app.search_package_in_registry(package_name, ecosystem)
+            # Temporarily suppress verbose logging for cleaner CLI output
+            registry_logger = logging.getLogger('src.providers.registries.jfrog_registry')
+            package_mgmt_logger = logging.getLogger('src.core.usecases.package_management')
+            original_registry_level = registry_logger.level
+            original_package_mgmt_level = package_mgmt_logger.level
+            registry_logger.setLevel(logging.WARNING)
+            package_mgmt_logger.setLevel(logging.WARNING)
+            
+            try:
+                # Use the core app for business logic
+                search_result = await self.app.search_package_in_registry(package_name, ecosystem)
+            finally:
+                # Restore original logging levels
+                registry_logger.setLevel(original_registry_level)
+                package_mgmt_logger.setLevel(original_package_mgmt_level)
             
             if not search_result["success"]:
                 if search_result.get("error"):
@@ -254,10 +267,19 @@ class SecurityScannerCLI:
                 if len(search_results) > 10:
                     self.console.print(f"... and {len(search_results) - 10} more results")
             
+            # Ensure session is properly closed
+            registry = self.services.get('registry')
+            if registry:
+                await registry.close()
+            
             return True
             
         except Exception as e:
             self.console.print(f"❌ Error searching package: {e}", style="red")
+            # Ensure session is properly closed on exception
+            registry = self.services.get('registry')
+            if registry:
+                await registry.close()
             return False
 
     async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False) -> bool:
@@ -543,60 +565,226 @@ class SecurityScannerCLI:
             return False
 
     async def registry_block(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> bool:
-        """Block a package in the package registry."""
+        """Block a package in the package registry using exclusion patterns."""
         try:
-            self.console.print(f"🚫 Blocking package: {package_name} ({ecosystem})")
+            self.console.print(f"🚫 Blocking package: {package_name} ({ecosystem}) version {version}")
             
             if not self.app:
                 self.console.print("❌ Application not initialized", style="red")
                 return False
             
-            # Use the core app for business logic
-            block_result = await self.app.block_package_in_registry(package_name, ecosystem, version)
+            # Temporarily suppress verbose logging for cleaner CLI output
+            package_mgmt_logger = logging.getLogger('src.core.usecases.package_management')
+            original_level = package_mgmt_logger.level
+            package_mgmt_logger.setLevel(logging.WARNING)
+            
+            try:
+                # Use the core app for business logic
+                block_result = await self.app.block_package_in_registry(package_name, ecosystem, version)
+            finally:
+                # Restore original logging level
+                package_mgmt_logger.setLevel(original_level)
             
             if block_result["success"]:
-                self.console.print(f"✅ Successfully blocked {package_name}", style="green")
+                self.console.print(f"✅ Successfully blocked {package_name} ({ecosystem}) version {version}", style="green")
+                self.console.print("📝 Package will be prevented from being downloaded or cached", style="blue")
+                
+                # Check repository information
+                registry = self.services.get('registry')
+                if registry:
+                    try:
+                        repos = await registry.discover_repositories_by_ecosystem(ecosystem)
+                        if repos:
+                            self.console.print(f"🔍 Applied exclusion patterns to repositories: {', '.join(repos)}", style="blue")
+                        else:
+                            self.console.print(f"⚠️  No repositories found for ecosystem {ecosystem}", style="yellow")
+                    except Exception as e:
+                        self.console.print(f"⚠️  Could not verify repository configuration: {e}", style="yellow")
+                    finally:
+                        # Ensure session is properly closed
+                        await registry.close()
+                
                 return True
             else:
                 error_msg = block_result.get("error", "Unknown error")
                 self.console.print(f"❌ Failed to block {package_name}: {error_msg}", style="red")
+                
+                # Ensure session is properly closed even on failure
+                registry = self.services.get('registry')
+                if registry:
+                    await registry.close()
+                    
                 return False
                 
         except Exception as e:
             self.console.print(f"❌ Error blocking package: {e}", style="red")
+            # Ensure session is properly closed on exception
+            registry = self.services.get('registry')
+            if registry:
+                await registry.close()
             return False
 
-    async def registry_unblock(self, package_name: str, ecosystem: str = "npm") -> bool:
-        """Unblock a package in the package registry."""
+    async def registry_list_blocked(self, ecosystem: str = "npm") -> bool:
+        """List currently blocked packages by showing exclusion patterns."""
         try:
-            self.console.print(f"✅ Unblocking package: {package_name} ({ecosystem})")
+            self.console.print(f"📋 Listing blocked packages for ecosystem: {ecosystem}")
             
-            registry = self.services['registry']
+            registry = self.services.get('registry')
+            if not registry:
+                self.console.print("❌ Registry service not available", style="red")
+                return False
             
-            # Create package object
-            package = MaliciousPackage(
-                name=package_name,
-                ecosystem=ecosystem,
-                version="*",
-                package_url=f"pkg:{ecosystem.lower()}/{package_name}",
-                advisory_id="CLI-MANUAL-UNBLOCK",
-                summary=f"Manually unblocked via CLI at {datetime.now()}",
-                details="Package unblocked using CLI testing tool",
-                aliases=[],
-                affected_versions=[],
-                database_specific={},
-                published_at=None,
-                modified_at=None
-            )
+            # Temporarily suppress verbose logging
+            jfrog_logger = logging.getLogger('src.providers.registries.jfrog_registry')
+            original_level = jfrog_logger.level
+            jfrog_logger.setLevel(logging.WARNING)
             
-            # Note: We would need to add unblock_package method to the registry interface
-            # For now, this is a placeholder to show the structure
-            self.console.print("⚠️ Unblock functionality needs to be implemented in package registry", style="yellow")
-            return True
+            try:
+                # Get repositories for this ecosystem
+                repos = await registry.discover_repositories_by_ecosystem(ecosystem)
+                
+                if not repos:
+                    self.console.print(f"⚠️  No repositories found for ecosystem {ecosystem}", style="yellow")
+                    return False
+                
+                # Check exclusion patterns in each repository
+                all_patterns = {}
+                
+                for repo_name in repos:
+                    session = await registry._get_session()
+                    repo_config_url = f"{registry.base_url}/artifactory/api/repositories/{repo_name}"
+                    
+                    async with session.get(repo_config_url) as response:
+                        if response.status == 200:
+                            repo_config = await response.json()
+                            excludes_pattern = repo_config.get('excludesPattern', '')
+                            
+                            if excludes_pattern:
+                                patterns = [p.strip() for p in excludes_pattern.split(",") if p.strip()]
+                                all_patterns[repo_name] = patterns
+                            else:
+                                all_patterns[repo_name] = []
+                
+                # Display results
+                if not any(all_patterns.values()):
+                    self.console.print(f"✅ No exclusion patterns found for {ecosystem} ecosystem", style="green")
+                    return True
+                
+                # Create summary table
+                total_patterns = sum(len(patterns) for patterns in all_patterns.values())
+                malifiscan_patterns = sum(1 for patterns in all_patterns.values() 
+                                        for pattern in patterns if "# Malifiscan:" in pattern)
+                
+                table = Table(title=f"Exclusion Patterns Summary - {ecosystem.upper()}")
+                table.add_column("Repository", style="cyan")
+                table.add_column("Total Patterns", style="yellow")
+                table.add_column("Malifiscan Patterns", style="magenta")
+                table.add_column("Other Patterns", style="blue")
+                
+                for repo_name, patterns in all_patterns.items():
+                    malifiscan_count = sum(1 for p in patterns if "# Malifiscan:" in p)
+                    other_count = len(patterns) - malifiscan_count
+                    table.add_row(
+                        repo_name,
+                        str(len(patterns)),
+                        str(malifiscan_count),
+                        str(other_count)
+                    )
+                
+                self.console.print(table)
+                
+                # Show detailed patterns if requested
+                show_details = len(all_patterns) == 1 or total_patterns < 20
+                
+                if show_details:
+                    for repo_name, patterns in all_patterns.items():
+                        if patterns:
+                            self.console.print(f"\n📦 Repository: {repo_name}")
+                            
+                            # Separate Malifiscan patterns from others
+                            malifiscan_patterns = [p for p in patterns if "# Malifiscan:" in p]
+                            other_patterns = [p for p in patterns if "# Malifiscan:" not in p]
+                            
+                            if malifiscan_patterns:
+                                self.console.print("🛡️  Malifiscan patterns:", style="bold magenta")
+                                for pattern in malifiscan_patterns:
+                                    self.console.print(f"   • {pattern}", style="magenta")
+                            
+                            if other_patterns:
+                                self.console.print("🔧 Other patterns:", style="bold blue")
+                                for pattern in other_patterns:
+                                    self.console.print(f"   • {pattern}", style="blue")
+                else:
+                    self.console.print(f"\n💡 Use 'registry list-blocked {ecosystem} --details' to see all patterns", style="dim")
+                
+                return True
+                
+            finally:
+                # Restore logging and cleanup
+                jfrog_logger.setLevel(original_level)
+                await registry.close()
+                
+        except Exception as e:
+            self.console.print(f"❌ Error listing blocked packages: {e}", style="red")
+            registry = self.services.get('registry')
+            if registry:
+                await registry.close()
+            return False
+
+    async def registry_unblock(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> bool:
+        """Unblock a package in the package registry by removing exclusion patterns."""
+        try:
+            self.console.print(f"✅ Unblocking package: {package_name} ({ecosystem}) version {version}")
             
+            registry = self.services.get('registry')
+            if not registry:
+                self.console.print("❌ Registry service not available", style="red")
+                return False
+            
+            # Temporarily suppress verbose logging for cleaner CLI output
+            jfrog_logger = logging.getLogger('src.providers.registries.jfrog_registry')
+            original_level = jfrog_logger.level
+            jfrog_logger.setLevel(logging.WARNING)
+            
+            try:
+                # Create package object
+                package = MaliciousPackage(
+                    name=package_name,
+                    ecosystem=ecosystem,
+                    version=version if version != "*" else None,
+                    package_url=f"pkg:{ecosystem.lower()}/{package_name}",
+                    advisory_id="CLI-MANUAL-UNBLOCK",
+                    summary=f"Manually unblocked via CLI at {datetime.now()}",
+                    details="Package unblocked using CLI testing tool",
+                    aliases=[],
+                    affected_versions=[version] if version != "*" else [],
+                    database_specific={},
+                    published_at=None,
+                    modified_at=None
+                )
+                
+                # Unblock the package
+                unblocked_packages = await registry.unblock_packages([package])
+            finally:
+                # Restore original logging level
+                jfrog_logger.setLevel(original_level)
+            
+            if unblocked_packages:
+                self.console.print(f"✅ Successfully unblocked {package_name} ({ecosystem})", style="green")
+                self.console.print("📝 Exclusion patterns have been removed - package can now be downloaded", style="blue")
+                return True
+            else:
+                self.console.print(f"⚠️  Package {package_name} was not blocked or could not be unblocked", style="yellow")
+                return False
+                
         except Exception as e:
             self.console.print(f"❌ Error unblocking package: {e}", style="red")
             return False
+        finally:
+            # Ensure session is properly closed
+            registry = self.services.get('registry')
+            if registry:
+                await registry.close()
 
     async def fetch_feed_packages(self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48) -> bool:
         """Fetch fresh malicious packages from the packages feed."""
@@ -833,7 +1021,9 @@ async def main():
         epilog="""
 Examples:
   python cli.py registry search lodash npm
-  python cli.py registry block evil-package npm  
+  python cli.py registry block evil-package npm 1.2.3
+  python cli.py registry unblock evil-package npm 1.2.3
+  python cli.py registry list-blocked npm
   python cli.py feed fetch --ecosystem npm --limit 50 --hours 24
   python cli.py scan crossref
   python cli.py health check
@@ -855,10 +1045,19 @@ Examples:
     search_parser.add_argument("package_name", help="Package name to search")
     search_parser.add_argument("ecosystem", nargs="?", default="npm", help="Package ecosystem")
     
-    block_parser = registry_subparsers.add_parser("block", help="Block a package")
+    block_parser = registry_subparsers.add_parser("block", help="Block a package using exclusion patterns")
     block_parser.add_argument("package_name", help="Package name to block")
-    block_parser.add_argument("ecosystem", nargs="?", default="npm", help="Package ecosystem")
-    block_parser.add_argument("version", nargs="?", default="*", help="Package version")
+    block_parser.add_argument("ecosystem", nargs="?", default="npm", help="Package ecosystem (npm, PyPI, Maven, etc.)")
+    block_parser.add_argument("version", nargs="?", default="*", help="Package version (* for all versions)")
+    
+    unblock_parser = registry_subparsers.add_parser("unblock", help="Unblock a package by removing exclusion patterns")
+    unblock_parser.add_argument("package_name", help="Package name to unblock")
+    unblock_parser.add_argument("ecosystem", nargs="?", default="npm", help="Package ecosystem (npm, PyPI, Maven, etc.)")
+    unblock_parser.add_argument("version", nargs="?", default="*", help="Package version (* for all versions)")
+    
+    list_blocked_parser = registry_subparsers.add_parser("list-blocked", help="List currently blocked packages by ecosystem")
+    list_blocked_parser.add_argument("ecosystem", nargs="?", default="npm", help="Package ecosystem (npm, PyPI, Maven, etc.)")
+    list_blocked_parser.add_argument("--details", action="store_true", help="Show detailed pattern information")
     
     # Security scan command
     scan_parser = subparsers.add_parser("scan", help="Security scanning operations")
@@ -914,6 +1113,10 @@ Examples:
                 await cli.registry_search(args.package_name, args.ecosystem)
             elif args.registry_action == "block":
                 await cli.registry_block(args.package_name, args.ecosystem, args.version)
+            elif args.registry_action == "unblock":
+                await cli.registry_unblock(args.package_name, args.ecosystem, args.version)
+            elif args.registry_action == "list-blocked":
+                await cli.registry_list_blocked(args.ecosystem)
                 
         elif args.command == "feed":
             if args.feed_action == "fetch":

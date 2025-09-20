@@ -84,6 +84,11 @@ class ServiceFactory:
                 if not self.config.jfrog_base_url:
                     raise ServiceFactoryError("JFrog base URL not configured")
                 
+                # Extract repository discovery configuration
+                repository_config = self.config.packages_registry.config.get("repository_discovery", {})
+                ecosystem_overrides = repository_config.get("ecosystem_overrides", {})
+                cache_ttl_seconds = repository_config.get("cache_ttl_seconds", 3600)
+                
                 return JFrogRegistry(
                     base_url=self.config.jfrog_base_url,
                     username=self.config.jfrog_username,
@@ -91,7 +96,9 @@ class ServiceFactory:
                     api_key=self.config.jfrog_api_key,
                     timeout_seconds=self.config.packages_registry.config.get("timeout_seconds", 30),
                     max_retries=self.config.packages_registry.config.get("max_retries", 3),
-                    retry_delay=self.config.packages_registry.config.get("retry_delay", 1.0)
+                    retry_delay=self.config.packages_registry.config.get("retry_delay", 1.0),
+                    repository_overrides=ecosystem_overrides,
+                    cache_ttl_seconds=cache_ttl_seconds
                 )
             else:
                 raise ServiceFactoryError(f"Unknown packages registry type: {self.config.packages_registry.type}")
