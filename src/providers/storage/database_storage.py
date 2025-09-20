@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, create_engine, text, ForeignKey, func
 from sqlalchemy.ext.declarative import declarative_base
@@ -139,10 +139,10 @@ class DatabaseStorage(StorageService):
         self,
         database_path: str = "data/security_scanner.db",
         default_registry_url: str = None,
-        connection_timeout: float | int | None = None,
-        max_connections: int | None = None,
+        connection_timeout: Union[float, int, None] = None,
+        max_connections: Optional[int] = None,
         echo: bool = False,
-        in_memory: bool | None = None,
+        in_memory: Optional[bool] = None,
     ):
         """Initialize database storage provider.
 
