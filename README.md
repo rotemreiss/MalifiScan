@@ -1,5 +1,9 @@
 # Malifiscan
 
+<div align="center">
+  <img src="art/logo.png" alt="Malifiscan Logo" width="200"/>
+</div>
+
 A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories.
 
 ## 🛡️ Features
