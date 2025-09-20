@@ -9,6 +9,7 @@ from .scan_results import ScanResultsManager
 from .registry_management import RegistryManagementUseCase
 from .feed_management import FeedManagementUseCase
 from .proactive_security import ProactiveSecurityUseCase
+from .configuration_management import ConfigurationManagementUseCase
 
 __all__ = [
     "SecurityScanner",
@@ -17,7 +18,8 @@ __all__ = [
     "DataManagementUseCase",
     "HealthManagementUseCase",
     "ScanResultsManager",
-    "RegistryManagementUseCase",
+    "RegistryManagementUseCase"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  ,
     "FeedManagementUseCase",
-    "ProactiveSecurityUseCase"
+    "ProactiveSecurityUseCase",
+    "ConfigurationManagementUseCase"
 ]

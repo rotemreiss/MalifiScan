@@ -220,6 +220,103 @@ class ServiceFactory:
             raise ValueError(f"Unknown feed type: {feed_type}")
 ```
 
+### CLI Design Pattern
+
+**CRITICAL RULE: CLI files must NEVER contain business logic**
+
+The CLI (`cli.py`) serves only as a **presentation layer** that:
+- Parses command-line arguments
+- Displays formatted output to users
+- Calls appropriate use cases
+- Handles user interaction (prompts, confirmations)
+
+All business logic must be implemented in use cases located in `src/core/usecases/`.
+
+#### CLI Structure Guidelines
+
+```python
+# ✅ Correct - CLI calls use case
+async def config_validate(self) -> bool:
+    """Validate current configuration."""
+    try:
+        # UI presentation only
+        self.console.print("🔍 Validating Configuration", style="bold cyan")
+        
+        # Delegate business logic to use case
+        config_usecase = ConfigurationManagementUseCase(...)
+        success, validation_results = await config_usecase.validate_configuration()
+        
+        # Handle presentation of results
+        self._display_validation_results(validation_results)
+        return success
+    except Exception as e:
+        self.console.print(f"❌ Error: {e}", style="red")
+        return False
+
+# ❌ Wrong - Business logic in CLI
+async def config_validate(self) -> bool:
+    """Validate current configuration."""
+    # Direct configuration loading and validation logic
+    config_loader = ConfigLoader(...)
+    config = config_loader.load()
+    
+    # Complex validation rules and business logic
+    if config.packages_registry.enabled:
+        if not config.jfrog_base_url:
+            # ... validation logic here
+```
+
+#### CLI Responsibilities
+
+**Allowed in CLI:**
+- Argument parsing and command routing
+- User input/output formatting and styling
+- Progress indicators and user feedback
+- Error message presentation
+- User interaction (confirmations, prompts)
+
+**FORBIDDEN in CLI:**
+- Configuration loading and validation logic
+- File system operations (beyond basic path handling)
+- Business rules and domain logic
+- Data transformation and processing
+- External service integration
+- Complex algorithms or calculations
+
+#### Use Case Integration
+
+Every CLI command should follow this pattern:
+
+1. **Parse Arguments**: Extract and validate command-line arguments
+2. **Create Use Case**: Instantiate the appropriate use case with dependencies
+3. **Execute Business Logic**: Call use case methods to perform operations
+4. **Present Results**: Format and display results to the user
+
+```python
+async def command_handler(self, args) -> bool:
+    """Handle CLI command by delegating to use case."""
+    try:
+        # 1. Parse and prepare arguments
+        params = self._extract_parameters(args)
+        
+        # 2. Create use case instance
+        use_case = SomeUseCase(self.services, self.config)
+        
+        # 3. Execute business logic
+        success, result = await use_case.perform_operation(params)
+        
+        # 4. Present results
+        if success:
+            self._display_success(result)
+        else:
+            self._display_error(result)
+        
+        return success
+    except Exception as e:
+        self.console.print(f"❌ Error: {e}", style="red")
+        return False
+```
+
 ## 🧪 Testing Standards
 
 ### Test Structure

@@ -20,7 +20,7 @@ class TestConfigLoader:
 environment: test
 """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             assert config.environment == "test"
@@ -51,7 +51,7 @@ notification_service:
                 'DEBUG': 'true',
                 'OSV_API_BASE_URL': 'https://custom-osv.example.com'
             }):
-                loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=True)
+                loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=True)
                 config = loader.load()
                 
                 assert config.environment == "production"
@@ -63,7 +63,7 @@ notification_service:
         with tempfile.TemporaryDirectory() as temp_dir:
             nonexistent_file = Path(temp_dir) / "nonexistent.yaml"
             
-            loader = ConfigLoader(str(nonexistent_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(nonexistent_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             # Should load with defaults
@@ -80,7 +80,7 @@ packages_registry:
   enabled: true
 """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             with pytest.raises(ConfigError, match="JFrog base URL is required"):
                 loader.load()

@@ -36,7 +36,7 @@ from src.config.config_loader import ConfigLoader
 from src.factories.service_factory import ServiceFactory
 from src.core.entities.registry_package_match import RegistryPackageMatchBuilder
 from src.core.entities import MaliciousPackage, ScanResult, NotificationEvent, NotificationLevel
-from src.core.usecases import SecurityScanner
+from src.core.usecases import SecurityScanner, ConfigurationManagementUseCase
 from src.main import SecurityScannerApp  # Import the main app class
 
 
@@ -922,6 +922,156 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error cleaning up test data: {e}", style="red")
             return False
 
+    async def config_init(self) -> bool:
+        """Initialize local configuration files from templates."""
+        try:
+            self.console.print("🔧 Initializing local configuration files...", style="cyan")
+            
+            # Check if config.local.yaml already exists
+            local_config_path = Path("config.local.yaml")
+            overwrite = False
+            if local_config_path.exists():
+                if not Confirm.ask(f"config.local.yaml already exists. Overwrite?"):
+                    self.console.print("❌ Configuration initialization cancelled", style="yellow")
+                    return False
+                overwrite = True
+            
+            # Use the configuration management usecase
+            config_usecase = ConfigurationManagementUseCase(
+                config_file=self.config_file,
+                env_file=self.env_file,
+                local_config_file="config.local.yaml"
+            )
+            
+            success, message = await config_usecase.initialize_configuration(overwrite_existing=overwrite)
+            
+            if success:
+                self.console.print(f"✅ {message}", style="green")
+                self.console.print()
+                self.console.print("🎉 Configuration initialization complete!", style="bold green")
+                self.console.print()
+                self.console.print("Next steps:", style="bold")
+                self.console.print("1. Edit config.local.yaml with your specific settings")
+                self.console.print("2. Edit .env with your JFrog credentials and other secrets")
+                self.console.print("3. Run 'python cli.py config validate' to verify your configuration")
+                return True
+            else:
+                self.console.print(f"❌ {message}", style="red")
+                return False
+            
+        except Exception as e:
+            self.console.print(f"❌ Error initializing configuration: {e}", style="red")
+            return False
+    
+    async def config_show(self) -> bool:
+        """Show current configuration from all sources."""
+        try:
+            self.console.print("📋 Current Configuration", style="bold cyan")
+            self.console.print()
+            
+            # Use the configuration management usecase
+            config_usecase = ConfigurationManagementUseCase(
+                config_file=self.config_file,
+                env_file=self.env_file,
+                local_config_file="config.local.yaml"
+            )
+            
+            success, config_summary = await config_usecase.get_configuration_summary()
+            
+            if not success:
+                self.console.print("❌ Error loading configuration", style="red")
+                return False
+            
+            # Create configuration display table
+            table = Table(title="Configuration Summary")
+            table.add_column("Setting", style="cyan")
+            table.add_column("Value", style="green")
+            table.add_column("Source", style="yellow")
+            
+            # Add key configuration items
+            settings = config_summary["settings"]
+            table.add_row("Environment", settings["environment"], "config file")
+            table.add_row("Debug Mode", str(settings["debug"]), "config file")
+            table.add_row("OSV Feed", f"{settings['osv_feed']['type']} ({'enabled' if settings['osv_feed']['enabled'] else 'disabled'})", "config file")
+            table.add_row("Registry", f"{settings['registry']['type']} ({'enabled' if settings['registry']['enabled'] else 'disabled'})", "config file")
+            table.add_row("Storage", f"{settings['storage']['type']} ({'enabled' if settings['storage']['enabled'] else 'disabled'})", "config file")
+            table.add_row("Notifications", f"{settings['notifications']['type']} ({'enabled' if settings['notifications']['enabled'] else 'disabled'})", "config file")
+            table.add_row("Log Level", settings["log_level"], "config file")
+            
+            # Environment-based settings
+            env_vars = config_summary["environment_vars"]
+            if env_vars["jfrog_url"] != "not set":
+                table.add_row("JFrog URL", env_vars["jfrog_url"], "environment")
+            if env_vars["jfrog_username"] != "not set":
+                table.add_row("JFrog Username", env_vars["jfrog_username"], "environment")
+            if env_vars["jfrog_api_key"] != "not set":
+                table.add_row("JFrog API Key", env_vars["jfrog_api_key"], "environment")
+            
+            self.console.print(table)
+            self.console.print()
+            
+            # Show file locations
+            config_files_table = Table(title="Configuration Files")
+            config_files_table.add_column("File", style="cyan")
+            config_files_table.add_column("Status", style="green")
+            config_files_table.add_column("Purpose", style="yellow")
+            
+            files_info = config_summary["files"]
+            for filename, info in files_info.items():
+                status = "✅ Found" if info["exists"] else "❌ Missing"
+                config_files_table.add_row(filename, status, info["purpose"])
+            
+            self.console.print(config_files_table)
+            
+            return True
+            
+        except Exception as e:
+            self.console.print(f"❌ Error showing configuration: {e}", style="red")
+            return False
+    
+    async def config_validate(self) -> bool:
+        """Validate current configuration."""
+        try:
+            self.console.print("🔍 Validating Configuration", style="bold cyan")
+            self.console.print()
+            
+            # Use the configuration management usecase
+            config_usecase = ConfigurationManagementUseCase(
+                config_file=self.config_file,
+                env_file=self.env_file,
+                local_config_file="config.local.yaml"
+            )
+            
+            success, validation_results = await config_usecase.validate_configuration()
+            
+            # Display validation results
+            table = Table(title="Validation Results")
+            table.add_column("Status", style="cyan")
+            table.add_column("Check", style="white")
+            
+            for result in validation_results:
+                table.add_row(result["status"], result["message"])
+            
+            self.console.print(table)
+            
+            # Summary
+            errors = [r for r in validation_results if r["status"] == "❌"]
+            warnings = [r for r in validation_results if r["status"] == "⚠️"]
+            
+            if errors:
+                self.console.print(f"\n❌ Validation failed with {len(errors)} error(s)", style="red")
+                return False
+            elif warnings:
+                self.console.print(f"\n⚠️ Validation passed with {len(warnings)} warning(s)", style="yellow")
+            else:
+                self.console.print(f"\n✅ All validation checks passed!", style="green")
+            
+            return success
+            
+        except Exception as e:
+            self.console.print(f"❌ Error validating configuration: {e}", style="red")
+            return False
+
 
 async def main():
     """Main CLI entry point."""
@@ -1005,6 +1155,13 @@ Examples:
     test_subparsers.add_parser("create", help="Create test data")
     test_subparsers.add_parser("cleanup", help="Clean up test data")
     
+    # Configuration management
+    config_parser = subparsers.add_parser("config", help="Configuration management")
+    config_subparsers = config_parser.add_subparsers(dest="config_action")
+    config_subparsers.add_parser("init", help="Initialize local configuration files")
+    config_subparsers.add_parser("show", help="Show current configuration")
+    config_subparsers.add_parser("validate", help="Validate configuration")
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -1052,6 +1209,14 @@ Examples:
                 await cli.create_test_data()
             elif args.test_action == "cleanup":
                 await cli.cleanup_test_data()
+                
+        elif args.command == "config":
+            if args.config_action == "init":
+                await cli.config_init()
+            elif args.config_action == "show":
+                await cli.config_show()
+            elif args.config_action == "validate":
+                await cli.config_validate()
     
     except KeyboardInterrupt:
         cli.console.print("\n👋 Goodbye!", style="blue")

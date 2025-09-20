@@ -18,7 +18,7 @@ packages_feed:
 # Package Registry Configuration  
 packages_registry:
   type: jfrog  # Currently only 'jfrog' is supported
-  enabled: true  # Enabled for testing with configured credentials
+  enabled: false  # Disabled by default to avoid requiring credentials
   config:
     timeout_seconds: 30
     max_retries: 3

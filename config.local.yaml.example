@@ -1,0 +1,38 @@
+# Local Configuration Override Example
+# Copy this file to config.local.yaml and customize for your environment
+# This file should be gitignored and contains user-specific settings
+
+# Override any settings from config.yaml here
+# Examples:
+
+# Enable debug mode for development
+debug: true
+environment: development
+
+# Override service configurations
+packages_registry:
+  enabled: true
+  config:
+    timeout_seconds: 60  # Increase timeout for slow networks
+
+# storage_service:
+#   type: file  # Use file storage instead of database
+#   config:
+#     data_directory: "my_scan_results"
+
+# notification_service:
+#   enabled: true
+#   type: composite
+#   channels: ["email", "slack"]
+
+# logging:
+#   level: "DEBUG"
+#   file_path: "logs/my_debug.log"
+
+# Custom repository mappings for your JFrog instance
+# packages_registry:
+#   config:
+#     repository_discovery:
+#       ecosystem_overrides:
+#         npm: "my-npm-repo"
+#         PyPI: "my-python-repo"

@@ -57,6 +57,45 @@
 - Do NOT skip error handling or tests
 - Do NOT modify core interfaces without migration plan
 - Do NOT introduce direct dependencies between layers
+- **Do NOT put business logic in CLI files** - CLI must only handle presentation and call use cases
+
+## 🖥️ CLI Design Guidelines
+**CRITICAL RULE: `cli.py` must NEVER contain business logic**
+
+The CLI serves only as a presentation layer that:
+- Parses command-line arguments and routes to handlers
+- Displays formatted output and user interaction
+- Calls appropriate use cases from `src/core/usecases/`
+- Handles user prompts and confirmations
+
+**CLI Pattern:**
+```python
+# ✅ Correct - CLI delegates to use case
+async def config_validate(self) -> bool:
+    # UI/presentation only
+    self.console.print("🔍 Validating...", style="cyan")
+    
+    # Delegate to use case
+    usecase = ConfigurationManagementUseCase(...)
+    success, results = await usecase.validate_configuration()
+    
+    # Display results
+    self._display_results(results)
+    return success
+
+# ❌ Wrong - Business logic in CLI
+async def config_validate(self) -> bool:
+    # Complex validation logic here - FORBIDDEN
+    config = ConfigLoader(...).load()
+    if config.registry.enabled and not config.jfrog_url:
+        # ... business rules - MOVE TO USE CASE
+```
+
+**When adding CLI commands:**
+1. Create or update appropriate use case in `src/core/usecases/`
+2. CLI method should only parse args, call use case, display results
+3. All file operations, validation, configuration logic goes in use case
+4. Add co-located tests for the use case, not just CLI integration tests
 
 ## ✅ AI Enhancement Guidelines
 - Prefer improving test coverage, error messages, logging, and configuration flexibility

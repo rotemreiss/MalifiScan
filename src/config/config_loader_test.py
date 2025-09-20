@@ -33,7 +33,7 @@ class TestConfigLoaderEnhanced:
 
     def test_init_with_defaults(self):
         """Test ConfigLoader initialization with default parameters."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         assert loader.config_file == "config.yaml"
         assert loader.env_file == ".env"
@@ -46,7 +46,7 @@ class TestConfigLoaderEnhanced:
             config_file = Path(temp_dir) / "config.yaml"
             config_file.write_text("invalid: yaml: content: [")
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             with pytest.raises(ConfigError, match="Failed to load configuration"):
                 loader.load()
@@ -62,7 +62,7 @@ class TestConfigLoaderEnhanced:
              - item2  # Invalid indentation
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             with pytest.raises(ConfigError, match="Failed to load configuration"):
                 loader.load()
@@ -76,7 +76,7 @@ class TestConfigLoaderEnhanced:
             # Make file unreadable
             config_file.chmod(0o000)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             try:
                 with pytest.raises(ConfigError, match="Failed to load configuration"):
@@ -91,7 +91,7 @@ class TestConfigLoaderEnhanced:
             config_file = Path(temp_dir) / "config.yaml"
             config_file.write_text("")  # Empty file
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             # Should load with defaults
@@ -104,7 +104,7 @@ class TestConfigLoaderEnhanced:
             config_file = Path(temp_dir) / "config.yaml"
             config_file.write_text("# Only comments\n")  # Results in None when parsed
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             # Should load with defaults
@@ -125,7 +125,7 @@ class TestConfigLoaderEnhanced:
                 'LOG_LEVEL': 'DEBUG',
                 'LOG_FILE_PATH': '/var/log/app.log'
             }):
-                loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=True)
+                loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=True)
                 config = loader.load()
                 
                 assert config.logging.level == "DEBUG"
@@ -138,14 +138,14 @@ class TestConfigLoaderEnhanced:
             config_file.write_text("environment: development")  # No logging section
             
             with patch.dict(os.environ, {'LOG_LEVEL': 'ERROR'}):
-                loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=True)
+                loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=True)
                 config = loader.load()
                 
                 assert config.logging.level == "ERROR"
 
     def test_convert_env_value_boolean_true(self):
         """Test conversion of boolean environment values."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         assert loader._convert_env_value("true", "debug") is True
         assert loader._convert_env_value("True", "debug") is True
@@ -156,7 +156,7 @@ class TestConfigLoaderEnhanced:
 
     def test_convert_env_value_integer(self):
         """Test conversion of integer environment values."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         assert loader._convert_env_value("5432", "email_smtp_port") == 5432
         assert loader._convert_env_value("24", "interval_hours") == 24
@@ -165,14 +165,14 @@ class TestConfigLoaderEnhanced:
 
     def test_convert_env_value_invalid_integer(self):
         """Test conversion of invalid integer environment values."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         # Should return string if can't convert to int
         assert loader._convert_env_value("not_a_number", "email_smtp_port") == "not_a_number"
 
     def test_convert_env_value_list(self):
         """Test conversion of list environment values."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         result = loader._convert_env_value("email1@example.com,email2@example.com", "email_to_addresses")
         assert result == ["email1@example.com", "email2@example.com"]
@@ -187,7 +187,7 @@ class TestConfigLoaderEnhanced:
 
     def test_convert_env_value_string(self):
         """Test conversion of string environment values."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         assert loader._convert_env_value("production", "environment") == "production"
         assert loader._convert_env_value("https://api.example.com", "api_url") == "https://api.example.com"
@@ -202,7 +202,7 @@ class TestConfigLoaderEnhanced:
               enabled: true
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             with pytest.raises(ConfigError, match="JFrog base URL is required"):
                 loader.load()
@@ -218,7 +218,7 @@ class TestConfigLoaderEnhanced:
             jfrog_base_url: "https://my-jfrog.example.com"
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             
             with pytest.raises(ConfigError, match="JFrog API key or username/password is required"):
                 loader.load()
@@ -235,7 +235,7 @@ class TestConfigLoaderEnhanced:
             jfrog_api_key: "api_key_123"
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             assert config.packages_registry.enabled is True
@@ -255,7 +255,7 @@ class TestConfigLoaderEnhanced:
             jfrog_password: "pass123"
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             assert config.packages_registry.enabled is True
@@ -272,7 +272,7 @@ class TestConfigLoaderEnhanced:
               enabled: true
             """)
             
-            loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+            loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
             config = loader.load()
             
             # Should not trigger JFrog validation since type is not "jfrog"
@@ -289,7 +289,7 @@ class TestConfigLoaderEnhanced:
             
             # Disable environment variable overrides so we test pure file loading behavior
             loader = ConfigLoader(
-                str(config_file), str(nonexistent_env), load_env_file=True, use_env_vars=False
+                str(config_file), str(nonexistent_env), local_config_file=None, load_env_file=True, use_env_vars=False
             )
             config = loader.load()
             
@@ -315,7 +315,7 @@ class TestConfigLoaderEnhanced:
             }
             
             with patch.dict(os.environ, env_vars):
-                loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=True)
+                loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=True)
                 config = loader.load()
                 
                 assert config.environment == "production"
@@ -339,7 +339,7 @@ class TestConfigLoaderEnhanced:
             
             # Don't load env file, but do use env vars
             with patch.dict(os.environ, {'ENVIRONMENT': 'from_env_var'}):
-                loader = ConfigLoader(str(config_file), str(env_file), load_env_file=False, use_env_vars=True)
+                loader = ConfigLoader(str(config_file), str(env_file), local_config_file=None, load_env_file=False, use_env_vars=True)
                 config = loader.load()
                 
                 # Should get value from env var, not env file
@@ -352,7 +352,7 @@ class TestConfigLoaderEnhanced:
             config_file.write_text("environment: from_yaml")
             
             with patch.dict(os.environ, {'ENVIRONMENT': 'from_env_var'}):
-                loader = ConfigLoader(str(config_file), load_env_file=False, use_env_vars=False)
+                loader = ConfigLoader(str(config_file), local_config_file=None, load_env_file=False, use_env_vars=False)
                 config = loader.load()
                 
                 # Should get value from YAML, not env var
@@ -360,10 +360,10 @@ class TestConfigLoaderEnhanced:
 
     def test_generic_exception_during_load(self):
         """Test generic exception handling during load process."""
-        loader = ConfigLoader()
+        loader = ConfigLoader(local_config_file=None)
         
         # Mock the load method to raise a generic exception
-        with patch.object(loader, '_load_yaml_config', side_effect=RuntimeError("Generic error")):
+        with patch.object(loader, '_load_layered_yaml_config', side_effect=RuntimeError("Generic error")):
             with pytest.raises(ConfigError, match="Failed to load configuration: Generic error"):
                 loader.load()
 

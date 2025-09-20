@@ -31,6 +31,7 @@ tmp/
 # Configuration with secrets
 .env.local
 .env.production
+config.local.yaml
 *secrets*
 
 # Local data files

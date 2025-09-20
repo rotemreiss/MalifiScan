@@ -73,10 +73,20 @@ UV is a fast Python package manager that provides better dependency resolution a
    uv sync --dev
    ```
 
-3. **Configure JFrog connection**
+3. **Initialize configuration**
    ```bash
-   # Create .env file from example (if available) or create new one
-   cp .env.example .env  # Edit .env with your JFrog details after copying it.
+   # Generate local configuration files from templates
+   uv run python cli.py config init
+   
+   # Edit the generated files with your settings:
+   # - .env: Add your JFrog credentials
+   # - config.local.yaml: Customize any settings
+   ```
+
+4. **Verify setup**
+   ```bash
+   uv run python cli.py config validate
+   uv run python cli.py health check
    ```
 
 #### Option 2: Using pip (Traditional)
@@ -84,7 +94,7 @@ UV is a fast Python package manager that provides better dependency resolution a
 1. **Clone and setup**
    ```bash
    git clone <repository-url>
-      cd malifiscan
+   cd malifiscan
    
    # Create and activate virtual environment
    python -m venv venv
@@ -95,33 +105,21 @@ UV is a fast Python package manager that provides better dependency resolution a
    pip install -r requirements.txt
    ```
 
-2. **Configure JFrog connection**
+2. **Initialize configuration**
    ```bash
-   # Create .env file from example (if available) or create new one
-   cp .env.example .env  # Edit .env with your JFrog details after copying it.
+   # Generate local configuration files from templates
+   python cli.py config init
+   
+   # Edit the generated files with your settings:
+   # - .env: Add your JFrog credentials
+   # - config.local.yaml: Customize any settings
    ```
 
-#### Environment Configuration
-
-If `.env.example` doesn't exist, create a `.env` file with the following template:
-
-```bash
-# JFrog Artifactory Configuration
-JFROG_BASE_URL=https://your-instance.jfrog.io
-JFROG_ACCESS_TOKEN=your-access-token
-JFROG_REPOSITORY=your-repo-name
-
-# Scanner Configuration  
-SCAN_INTERVAL_HOURS=24
-LOG_LEVEL=INFO
-STORAGE_TYPE=memory
-
-# OSV Database Configuration
-OSV_API_BASE_URL=https://api.osv.dev
-OSV_BATCH_SIZE=100
-```
-
-**⚠️ Important**: Edit the `.env` file with your actual JFrog credentials before running the tool.
+3. **Verify setup**
+   ```bash
+   python cli.py config validate
+   python cli.py health check
+   ```
 
 ## 📋 Usage
 
@@ -269,7 +267,36 @@ For database best practices, coverage instructions, integration test markers, an
 
 ## 🔧 Configuration
 
-### Environment Variables (.env)
+Malifiscan uses a layered configuration approach for maximum flexibility and user-friendliness.
+
+### Quick Start Configuration
+
+```bash
+# Initialize configuration files (one-time setup)
+python cli.py config init
+
+# Validate your configuration
+python cli.py config validate
+
+# View current configuration
+python cli.py config show
+```
+
+### Configuration Layers (Priority Order)
+
+Configuration is loaded from multiple sources, with higher priority sources overriding lower ones:
+
+1. **CLI arguments** (highest priority)
+2. **Environment variables** (`.env` file or system environment)
+3. **Local config file** (`config.local.yaml` - user-specific, gitignored)
+4. **Project config file** (`config.yaml` - defaults, committed to Git)
+5. **Built-in defaults** (lowest priority)
+
+### Configuration Files
+
+#### Environment Variables (.env)
+
+Contains sensitive information like credentials and API keys:
 
 ```bash
 # JFrog Configuration (Required)
@@ -278,11 +305,34 @@ JFROG_API_KEY=your-api-key-here
 
 # Optional: Customize scan behavior
 SCANNER_INTERVAL_HOURS=1
+LOG_LEVEL=INFO
 ```
 
-### Configuration File (config.yaml)
+#### Local Configuration (config.local.yaml)
 
-Enable/disable services and customize behavior:
+Your personal configuration overrides (gitignored):
+
+```yaml
+# Enable debug mode for development
+debug: true
+environment: development
+
+# Override service configurations
+packages_registry:
+  enabled: true
+  config:
+    timeout_seconds: 60
+
+# Custom storage location
+storage_service:
+  type: file
+  config:
+    data_directory: "my_scan_results"
+```
+
+#### Base Configuration (config.yaml)
+
+Project defaults (committed to Git):
 
 ```yaml
 packages_feed:

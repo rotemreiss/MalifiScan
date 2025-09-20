@@ -78,26 +78,43 @@ class Config(BaseModel):
 
 
 class ConfigLoader:
-    """Configuration loader that handles both YAML and environment variables."""
+    """Configuration loader that handles layered configuration from multiple sources.
     
-    def __init__(self, config_file: Optional[str] = None, env_file: Optional[str] = None, load_env_file: bool = True, use_env_vars: bool = True):
+    Configuration loading priority (highest to lowest):
+    1. CLI arguments (handled externally)
+    2. Environment variables (.env file or system env)
+    3. Local config file (config.local.yaml - user-specific, gitignored)
+    4. Project config file (config.yaml - defaults, committed to Git)
+    5. Built-in defaults (hardcoded in code)
+    """
+    
+    def __init__(self, config_file: Optional[str] = None, env_file: Optional[str] = None, 
+                 local_config_file: Optional[str] = "config.local.yaml", load_env_file: bool = True, 
+                 use_env_vars: bool = True):
         """
         Initialize config loader.
         
         Args:
-            config_file: Path to YAML config file
-            env_file: Path to .env file
+            config_file: Path to main YAML config file (defaults)
+            env_file: Path to .env file  
+            local_config_file: Path to local override config file (None to disable local config)
             load_env_file: Whether to automatically load .env file
             use_env_vars: Whether to use environment variables for overrides
         """
         self.config_file = config_file or "config.yaml"
+        self.local_config_file = local_config_file  # Can be None to disable, or a path
         self.env_file = env_file or ".env"
         self.load_env_file = load_env_file
         self.use_env_vars = use_env_vars
     
     def load(self) -> Config:
         """
-        Load configuration from files and environment.
+        Load configuration from multiple sources with proper precedence.
+        
+        Loading order (later sources override earlier ones):
+        1. Base config file (config.yaml)
+        2. Local config file (config.local.yaml)
+        3. Environment variables (.env file + system env)
         
         Returns:
             Validated Config object
@@ -110,8 +127,8 @@ class ConfigLoader:
             if self.load_env_file and Path(self.env_file).exists():
                 load_dotenv(self.env_file)
             
-            # Load YAML configuration
-            config_data = self._load_yaml_config()
+            # Load layered YAML configuration
+            config_data = self._load_layered_yaml_config()
             
             # Override with environment variables (if enabled)
             if self.use_env_vars:
@@ -128,21 +145,64 @@ class ConfigLoader:
         except Exception as e:
             raise ConfigError(f"Failed to load configuration: {e}") from e
     
-    def _load_yaml_config(self) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
-        config_path = Path(self.config_file)
+    def _load_layered_yaml_config(self) -> Dict[str, Any]:
+        """Load configuration from multiple YAML files with proper layering."""
+        config_data = {}
+        
+        # 1. Load base config file (config.yaml)
+        base_config = self._load_single_yaml_config(self.config_file)
+        if base_config:
+            config_data.update(base_config)
+        
+        # 2. Load local config file (config.local.yaml) and merge (if enabled)
+        if self.local_config_file:
+            local_config = self._load_single_yaml_config(self.local_config_file)
+            if local_config:
+                config_data = self._deep_merge_configs(config_data, local_config)
+        
+        return config_data
+    
+    def _load_single_yaml_config(self, config_file: str) -> Dict[str, Any]:
+        """Load configuration from a single YAML file."""
+        config_path = Path(config_file)
         
         if not config_path.exists():
-            # Return default config if file doesn't exist
             return {}
         
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 return yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
-            raise ConfigValidationError(f"Invalid YAML in config file: {e}") from e
+            raise ConfigValidationError(f"Invalid YAML in config file '{config_file}': {e}") from e
         except Exception as e:
-            raise ConfigFileNotFoundError(f"Cannot read config file: {e}") from e
+            raise ConfigFileNotFoundError(f"Cannot read config file '{config_file}': {e}") from e
+    
+    def _deep_merge_configs(self, base_config: Dict[str, Any], override_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Deep merge two configuration dictionaries.
+        
+        Args:
+            base_config: Base configuration dictionary
+            override_config: Override configuration dictionary
+            
+        Returns:
+            Merged configuration dictionary
+        """
+        import copy
+        result = copy.deepcopy(base_config)
+        
+        for key, value in override_config.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                # Recursively merge dictionaries
+                result[key] = self._deep_merge_configs(result[key], value)
+            else:
+                # Override the value
+                result[key] = value
+        
+        return result
+    
+    def _load_yaml_config(self) -> Dict[str, Any]:
+        """Load configuration from YAML file (legacy method for backwards compatibility)."""
+        return self._load_single_yaml_config(self.config_file)
     
     def _override_with_env(self, config_data: Dict[str, Any]) -> Dict[str, Any]:
         """Override configuration with environment variables."""

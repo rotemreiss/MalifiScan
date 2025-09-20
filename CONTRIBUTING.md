@@ -83,31 +83,106 @@ After installation, verify everything works:
 
 ```bash
 # Using UV
-uv run python cli.py --help
-uv run python cli.py health check
+uv run python cli.py config init    # Initialize configuration
+uv run python cli.py config validate  # Verify setup
+uv run python cli.py health check   # Test services
 
 # Using pip/venv (activate environment first)
 source venv/bin/activate
-python cli.py --help
-python cli.py health check
+python cli.py config init           # Initialize configuration
+python cli.py config validate       # Verify setup
+python cli.py health check          # Test services
 ```
 
 ## ⚙️ Configuration
 
-### Environment Variables (.env)
+### Layered Configuration System
+
+Malifiscan uses a layered configuration approach for maximum flexibility:
+
+**Configuration Priority (highest to lowest):**
+1. CLI arguments
+2. Environment variables (`.env` file or system environment)
+3. Local config file (`config.local.yaml` - user-specific, gitignored)
+4. Project config file (`config.yaml` - defaults, committed to Git)
+5. Built-in defaults
+
+### Configuration Management Commands
+
+```bash
+# Initialize local configuration files from templates
+python cli.py config init
+
+# View current configuration from all sources
+python cli.py config show
+
+# Validate configuration and check for issues
+python cli.py config validate
+```
+
+### Configuration Files
+
+#### Environment Variables (.env)
+
+Contains sensitive credentials and runtime settings:
 
 ```bash
 # JFrog Configuration (Required)
 JFROG_BASE_URL=https://your-company.jfrog.io/artifactory
 JFROG_API_KEY=your-api-key
 
-# Scheduling
+# Optional Configuration
 SCANNER_INTERVAL_HOURS=1
+LOG_LEVEL=INFO
+DEBUG=false
 ```
 
-### Configuration File (config.yaml)
+#### Local Configuration (config.local.yaml)
 
-The `config.yaml` file controls provider types, storage options, and other settings.
+Your personal overrides (gitignored, won't be committed):
+
+```yaml
+# Development settings
+debug: true
+environment: development
+
+# Service overrides
+packages_registry:
+  enabled: true
+  config:
+    timeout_seconds: 60
+
+# Custom storage
+storage_service:
+  type: file
+  config:
+    data_directory: "my_scan_results"
+```
+
+#### Base Configuration (config.yaml)
+
+Project-wide defaults (committed to Git, shared by all developers):
+
+```yaml
+packages_feed:
+  type: osv
+  enabled: true
+
+packages_registry:
+  type: jfrog
+  enabled: false  # Disabled by default
+
+storage_service:
+  type: database
+  enabled: true
+```
+
+### Configuration Best Practices
+
+- **Never commit secrets**: Use `.env` or `config.local.yaml` for sensitive data
+- **Use local overrides**: Customize settings in `config.local.yaml` instead of modifying `config.yaml`
+- **Environment-specific configs**: Use environment variables for deployment-specific settings
+- **Validate regularly**: Run `python cli.py config validate` to catch configuration issues early
 
 ## 🔄 Development Workflow
 
