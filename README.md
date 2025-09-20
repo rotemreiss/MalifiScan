@@ -6,6 +6,10 @@
 
 A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories.
 
+<div align="center">
+  <img src="art/demo.gif" alt="Malifiscan In-Action"/>
+</div>
+
 ## 🛡️ Features
 
 - **OSV Feed Integration**: Fetches malicious package data from Google Cloud Storage OSV vulnerability database

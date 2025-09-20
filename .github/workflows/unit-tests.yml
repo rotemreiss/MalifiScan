@@ -2,8 +2,7 @@ name: Unit Tests
 
 on:
   pull_request:
-    br    - name: Run unit tests
-      run: uv run python -m pytest tests/unit/ --cov=src --cov-report=term-missingches: [ main ]
+    branches: [ main ]
     paths:
       - '**.py'
       - '**.yml'

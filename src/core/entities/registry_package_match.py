@@ -34,13 +34,13 @@ class RegistryPackageMatch:
         Returns:
             Dictionary with dynamic field names based on registry
         """
-        registry_lower = self.registry_name.lower()
+        registry_key = self._normalize_registry_name()
         
         return {
             'package': self.package,
-            f'{registry_lower}_results': self.registry_results or [],
+            f'{registry_key}_results': self.registry_results or [],
             'matching_versions': self.matching_versions or [],
-            f'all_{registry_lower}_versions': self.all_registry_versions or [],
+            f'all_{registry_key}_versions': self.all_registry_versions or [],
             'malicious_versions': self.malicious_versions or []
         }
     
@@ -51,26 +51,41 @@ class RegistryPackageMatch:
         Returns:
             Dictionary with dynamic field names based on registry
         """
-        registry_lower = self.registry_name.lower()
+        registry_key = self._normalize_registry_name()
         
         return {
             'package': self.package,
-            f'{registry_lower}_results': self.registry_results or [],
-            f'{registry_lower}_versions': self.all_registry_versions or [],
+            f'{registry_key}_results': self.registry_results or [],
+            f'{registry_key}_versions': self.all_registry_versions or [],
             'malicious_versions': self.malicious_versions or []
         }
     
     def get_all_versions_field_name(self) -> str:
         """Get the field name for all registry versions."""
-        return f'all_{self.registry_name.lower()}_versions'
+        return f'all_{self._normalize_registry_name()}_versions'
     
     def get_versions_field_name(self) -> str:
         """Get the field name for registry versions."""
-        return f'{self.registry_name.lower()}_versions'
+        return f'{self._normalize_registry_name()}_versions'
     
     def get_results_field_name(self) -> str:
         """Get the field name for registry results."""
-        return f'{self.registry_name.lower()}_results'
+        return f'{self._normalize_registry_name()}_results'
+    
+    def _normalize_registry_name(self) -> str:
+        """
+        Normalize registry name for use in field names.
+        
+        Converts registry name to lowercase and replaces spaces/special chars with underscores.
+        
+        Returns:
+            Normalized registry name suitable for field names
+        """
+        import re
+        # Convert to lowercase and replace spaces and special characters with underscores
+        normalized = re.sub(r'[^a-z0-9]+', '_', self.registry_name.lower())
+        # Remove leading/trailing underscores
+        return normalized.strip('_')
 
 
 class RegistryPackageMatchBuilder:
