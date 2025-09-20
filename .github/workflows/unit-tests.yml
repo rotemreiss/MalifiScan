@@ -3,8 +3,22 @@ name: Unit Tests
 on:
   pull_request:
     branches: [ main ]
+    paths:
+      - '**.py'
+      - '**.yml'
+      - '**.yaml'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'uv.lock'
   push:
     branches: [ main ]
+    paths:
+      - '**.py'
+      - '**.yml'
+      - '**.yaml'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'uv.lock'
 
 jobs:
   unit-tests:
