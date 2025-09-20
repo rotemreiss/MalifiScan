@@ -30,7 +30,7 @@ packages_registry:
       # Manual repository overrides for specific ecosystems
       # This avoids API calls for repository discovery if you know the repo names
       ecosystem_overrides:
-        npm: "my-npm"
+        # npm: "npmjs-virtual"
         # PyPI: "python-packages"
         # Maven: "maven-central"
         # Go: "go-proxy"
