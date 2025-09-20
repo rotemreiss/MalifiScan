@@ -1,6 +1,6 @@
-# Contributing to OSV-JFrog Security Scanner
+# Contributing to Malifiscan
 
-Thank you for your interest in contributing to the OSV-JFrog Security Scanner! This guide provides information for developers who want to contribute to or extend the project.
+Thank you for your interest in contributing to Malifiscan! This guide provides information for developers who want to contribute to or extend the project.
 
 ## 🏗️ Architecture
 
@@ -38,20 +38,10 @@ src/
 UV provides faster dependency resolution and better development experience.
 
 1. **Install UV** (if not already installed)
-   ```bash
-   # Using the official installer
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   
-   # Alternative methods:
-   # macOS: brew install uv
-   # Windows: winget install --id=astral-sh.uv
-   # Or visit: https://docs.astral.sh/uv/getting-started/installation/
-   ```
-
 2. **Clone and setup the project**
    ```bash
-   git clone <repository-url>
-   cd osv-jfrog
+  git clone <repository-url>
+  cd malifiscan
    
    # Initialize UV project
    uv init --no-readme --no-pin-python
@@ -95,8 +85,8 @@ EOF
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
-   cd osv-jfrog
+  git clone <repository-url>
+  cd malifiscan
    ```
 
 2. **Setup Python environment**
@@ -235,6 +225,65 @@ pip freeze > requirements.txt
 
 ## 🧪 Testing
 
+### Overview
+The project uses co-located unit tests (next to source under `src/`) plus broader integration tests under `tests/integration/`. See below for database-specific strategy and execution examples.
+
+### Database (SQLite) Testing Best Practices
+
+| Layer | Location | Purpose | Scope |
+|-------|----------|---------|-------|
+| Unit  | `src/providers/storage/database_storage_test.py` | Validate ORM mapping & CRUD logic | Direct `DatabaseStorage` calls |
+| Integration | `tests/integration/test_database_integration.py` | End-to-end flow through use cases | `ScanResultsManager` + real storage |
+
+Key practices:
+* Use `DatabaseStorage(database_path=":memory:", in_memory=True)` for fast isolation.
+* In-memory engine uses a StaticPool internally so multiple sessions share state.
+* Avoid mocking SQLAlchemy internals—assert behavior via the storage interface.
+* For new persistence features: write a unit test first, then an integration test.
+* Promote fixtures to `conftest.py` only after repeated reuse.
+* Use file-backed DB only for manual debugging.
+
+Edge cases to cover:
+1. Empty result sets
+2. Duplicate scan insert (update semantics)
+3. Limit & filtering logic (`limit`, `scan_id`)
+4. Malicious package & findings relationship integrity
+5. Health checks and error wrapping into `StorageError`
+
+### Running Tests
+
+Using UV (recommended):
+```bash
+uv run pytest tests/                    # All tests
+uv run pytest tests/ -m "not integration"  # Unit tests
+uv run pytest tests/ -m integration     # Integration tests
+uv run pytest tests/ --cov=src --cov-report=html
+```
+
+Using pip / venv:
+```bash
+pytest tests/                           # All tests
+pytest tests/ -m "not integration"      # Unit tests
+pytest tests/ -m integration            # Integration tests
+pytest tests/ --cov=src --cov-report=html
+```
+
+### Command Options Reference
+Common CLI scan options used in tests and examples:
+
+- `--hours`: Time window (default 48)
+- `--ecosystem`: Package ecosystem (npm, pypi, etc.)
+- `--limit`: Max packages to process
+- `--debug`: Enable verbose logging
+
+### Adding New Tests
+1. Co-locate file: `*_test.py` next to implementation.
+2. Use descriptive test method names.
+3. Prefer real entities over bare mocks where feasible.
+4. Keep assertions focused—one behavior per test.
+5. Fail fast on unexpected side effects (e.g., extra DB rows).
+
+
 ### Running Tests
 
 We use a **co-located test structure** where tests are placed next to their source files with a `_test.py` suffix.
@@ -329,7 +378,7 @@ class TestMyUseCase:
         pass
 ```
 
-## � Database Schema (ERD)
+## 🗄️ Database Schema (ERD)
 
 The application uses a normalized SQLite database schema with the following entities and relationships:
 
@@ -434,7 +483,7 @@ storage_service:
 
 The SQLite database file is automatically created at `scan_results/security_scanner.db`.
 
-## �🔧 Development Workflow
+##  Development Workflow (Extending the System)
 
 ### Adding New Package Feeds
 

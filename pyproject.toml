@@ -3,9 +3,9 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "osv-jfrog-security-scanner"
+name = "malifiscan"
 version = "1.0.0"
-description = "Security scanner for JFrog Artifactory using OSV database"
+description = "A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories."
 authors = [
     {name = "Security Team", email = "security@example.com"}
 ]

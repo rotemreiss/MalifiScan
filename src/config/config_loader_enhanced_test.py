@@ -287,7 +287,10 @@ class TestConfigLoaderEnhanced:
             
             nonexistent_env = Path(temp_dir) / "nonexistent.env"
             
-            loader = ConfigLoader(str(config_file), str(nonexistent_env), load_env_file=True)
+            # Disable environment variable overrides so we test pure file loading behavior
+            loader = ConfigLoader(
+                str(config_file), str(nonexistent_env), load_env_file=True, use_env_vars=False
+            )
             config = loader.load()
             
             # Should load successfully without the env file

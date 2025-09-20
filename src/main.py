@@ -283,39 +283,6 @@ class SecurityScannerApp:
         
         return await self.health_management.get_service_health_status()
     
-    async def get_malicious_packages_data(self, limit: int = 20, ecosystem: Optional[str] = None, hours: Optional[int] = None) -> dict:
-        """
-        Get known malicious packages from storage with filtering.
-        
-        Args:
-            limit: Maximum number of packages to return
-            ecosystem: Filter by ecosystem
-            hours: Filter to packages from last N hours
-            
-        Returns:
-            Dictionary containing packages and metadata
-        """
-        if not self.data_management:
-            raise RuntimeError("Application not initialized")
-        
-        return await self.data_management.get_malicious_packages(limit, ecosystem, hours)
-    
-    async def get_scan_logs_data(self, limit: int = 20, filter_level: Optional[str] = None) -> dict:
-        """
-        Get scan results and logs from storage.
-        
-        Args:
-            limit: Maximum number of scan results to return
-            filter_level: Filter by log level (not currently used)
-            
-        Returns:
-            Dictionary containing scan results and metadata
-        """
-        if not self.data_management:
-            raise RuntimeError("Application not initialized")
-        
-        return await self.data_management.get_scan_logs(limit, filter_level)
-    
     async def get_recent_scan_summaries(self, limit: int = 3) -> dict:
         """
         Get recent scan summaries.

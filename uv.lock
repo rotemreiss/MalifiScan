@@ -937,7 +937,7 @@ wheels = [
 ]
 
 [[package]]
-name = "osv-jfrog-security-scanner"
+name = "malifiscan"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [

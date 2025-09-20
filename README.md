@@ -1,6 +1,6 @@
-# OSV-JFrog Security Scanner
+# Malifiscan
 
-A security tool that detects malicious packages from the OSV (Open Source Vulnerabilities) database and searches for them in your JFrog Artifactory repositories.
+A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories.
 
 ## 🛡️ Features
 
@@ -35,7 +35,7 @@ UV is a fast Python package manager that provides better dependency resolution a
 2. **Clone and setup the project**
    ```bash
    git clone <repository-url>
-   cd osv-jfrog
+   cd malifiscan
    
    # Initialize UV project and install dependencies
    uv init --no-readme --no-pin-python
@@ -63,7 +63,7 @@ UV is a fast Python package manager that provides better dependency resolution a
 1. **Clone and setup**
    ```bash
    git clone <repository-url>
-   cd osv-jfrog
+      cd malifiscan
    
    # Create and activate virtual environment
    python -m venv venv
@@ -220,56 +220,23 @@ Start an interactive session with autocomplete and command history.
 For scheduled scans, use the core entry point:
 ```bash
 # Run security scan every 6 hours
-0 */6 * * * cd /path/to/osv-jfrog && python -m src.main --scan
+0 */6 * * * cd /path/to/malifiscan && python -m src.main --scan
 
 # Daily health check
-0 9 * * * cd /path/to/osv-jfrog && python -m src.main --status
+0 9 * * * cd /path/to/malifiscan && python -m src.main --status
 ```
 
 ## 🧪 Testing
 
-### Using UV (Recommended)
+Testing guidelines, database persistence strategy, and detailed command usage have moved to `CONTRIBUTING.md`.
+
+Quick commands:
 ```bash
-# Run all tests
-uv run pytest tests/
-
-# Run only unit tests (faster)
-uv run pytest tests/ -m "not integration"
-
-# Run only integration tests
-uv run pytest tests/ -m integration
-
-# Run with coverage
-uv run pytest tests/ --cov=src --cov-report=html
-
-# Run tests with custom pytest options
-uv run pytest tests/ --verbose --tb=short
-uv run pytest tests/ -k "test_jfrog"
+uv run pytest tests/                 # All tests (UV)
+pytest tests/                        # All tests (pip/venv)
 ```
 
-### Using pip/venv (Traditional)
-```bash
-source venv/bin/activate  # Activate environment first
-
-# Run all tests
-pytest tests/
-
-# Run only unit tests
-pytest tests/ -m "not integration"
-
-# Run only integration tests  
-pytest tests/ -m integration
-
-# Run with coverage
-pytest tests/ --cov=src --cov-report=html
-```
-
-### Command Options
-
-- `--hours`: Time window for OSV data (default: 48)
-- `--ecosystem`: Package ecosystem (npm, pypi, etc.) 
-- `--limit`: Maximum number of packages to process
-- `--debug`: Enable detailed logging
+For database best practices, coverage instructions, integration test markers, and adding new tests, see the Testing section in `CONTRIBUTING.md`.
 
 ## 🔧 Configuration
 

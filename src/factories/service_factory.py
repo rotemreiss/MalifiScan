@@ -167,8 +167,12 @@ class ServiceFactory:
                     clear_on_init=self.config.storage_service.config.get("clear_on_init", False)
                 )
             elif storage_type == "database" or storage_type == "sqlite":
+                db_path = self.config.storage_service.config.get("database_path", "data/security_scanner.db")
                 return DatabaseStorage(
-                    database_path=self.config.storage_service.config.get("database_path", "data/security_scanner.db")
+                    database_path=db_path,
+                    connection_timeout=self.config.storage_service.config.get("connection_timeout", 30.0),
+                    max_connections=self.config.storage_service.config.get("max_connections", 10),
+                    in_memory=True if db_path == ":memory:" else False,
                 )
             else:
                 raise ServiceFactoryError(f"Unknown storage service type: {self.config.storage_service.type}")

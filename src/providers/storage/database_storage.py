@@ -127,36 +127,74 @@ class BlockedPackageModel(Base):
 
 
 class DatabaseStorage(StorageService):
-    """Database storage provider using SQLAlchemy with SQLite."""
+    """Database storage provider using SQLAlchemy with SQLite.
+
+    Extended to support:
+    - Optional connection timeout (SQLite busy timeout)
+    - Optional max connection 'pool size' semantics (no-op for SQLite but kept for parity)
+    - In-memory database usage for tests (sqlite:///:memory:) retaining schema across sessions
+    """
     
-    def __init__(self, database_path: str = "data/security_scanner.db", default_registry_url: str = None):
-        """
-        Initialize database storage provider.
-        
+    def __init__(
+        self,
+        database_path: str = "data/security_scanner.db",
+        default_registry_url: str = None,
+        connection_timeout: float | int | None = None,
+        max_connections: int | None = None,
+        echo: bool = False,
+        in_memory: bool | None = None,
+    ):
+        """Initialize database storage provider.
+
         Args:
-            database_path: Path to SQLite database file
-            default_registry_url: Default registry URL to use if none specified
+            database_path: Path to SQLite database file or ':memory:'
+            default_registry_url: Default registry URL if none specified
+            connection_timeout: Busy timeout in seconds for SQLite (converted to milliseconds pragma)
+            max_connections: Placeholder for future pool sizing (kept for API symmetry)
+            echo: Enable SQL echo for debugging
+            in_memory: Force in-memory mode (overrides database_path when True)
         """
-        self.database_path = Path(database_path)
+        # Determine if using in-memory
+        if in_memory or database_path == ":memory:":
+            self.database_path = Path("/dev/null/" )  # dummy path for logging
+            self.database_url = "sqlite+pysqlite:///:memory:"
+            use_memory = True
+        else:
+            self.database_path = Path(database_path)
+            # Ensure directory exists
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+            self.database_url = f"sqlite+pysqlite:///{self.database_path}"
+            use_memory = False
+
         self.default_registry_url = default_registry_url or "https://default-registry.example.com"
-        
-        # Ensure data directory exists
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Create SQLAlchemy engine
-        self.database_url = f"sqlite:///{self.database_path}"
-        self.engine = create_engine(self.database_url, echo=False)
-        
-        # Create session factory
-        self.SessionLocal = sessionmaker(bind=self.engine)
-        
-        # Initialize database schema
+        self.connection_timeout = connection_timeout
+        self.max_connections = max_connections
+        self.echo = echo
+
+        # Engine creation (StaticPool for in-memory to persist across sessions)
+        engine_kwargs: Dict[str, Any] = {"echo": self.echo, "future": True}
+        connect_args: Dict[str, Any] = {"check_same_thread": False}
+        if self.connection_timeout is not None:
+            # SQLite expects timeout in seconds via connect arg 'timeout'
+            connect_args["timeout"] = float(self.connection_timeout)
+        engine_kwargs["connect_args"] = connect_args
+
+        if use_memory:
+            from sqlalchemy.pool import StaticPool
+            engine_kwargs["poolclass"] = StaticPool
+
+        self.engine = create_engine(self.database_url, **engine_kwargs)
+        self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
+
+        # Initialize schema & default registry
         self._initialize_database()
-        
-        # Ensure default registry exists
         self._ensure_default_registry()
-        
-        logger.debug(f"Database storage initialized with database: {self.database_path}")
+        logger.debug(
+            "Database storage initialized (memory=%s, path=%s, timeout=%s)",
+            use_memory,
+            database_path,
+            self.connection_timeout,
+        )
     
     def _ensure_default_registry(self) -> str:
         """Ensure default registry exists and return its ID."""

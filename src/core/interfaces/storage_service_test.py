@@ -96,6 +96,24 @@ class MockStorageService(StorageService):
         
         return self.healthy
 
+    async def get_scan_summary(self, limit: Optional[int] = None) -> List[dict]:
+        """Return a lightweight summary of stored scan results (mock)."""
+        if self.should_raise_error:
+            raise Exception(self.error_message)
+        results = self.stored_scan_results.copy()
+        if limit is not None:
+            results = results[:limit]
+        return [
+            {
+                "scan_id": r.scan_id,
+                "status": r.status.value if hasattr(r.status, 'value') else r.status,
+                "packages_scanned": r.packages_scanned,
+                "malicious_found": len(r.malicious_packages_found),
+                "timestamp": r.timestamp.isoformat(),
+            }
+            for r in results
+        ]
+
 
 class TestStorageServiceInterface:
     """Test cases for StorageService interface."""

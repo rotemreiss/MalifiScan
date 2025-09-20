@@ -28,7 +28,11 @@ class MockPackagesRegistryService(PackagesRegistryService):
         self.error_message = "Mock error"
         self.search_results = []
         self.is_closed = False
-        
+
+    def get_registry_name(self) -> str:
+        """Return a fixed registry name for testing."""
+        return "mock-registry"
+    
     async def block_packages(self, packages: List[MaliciousPackage]) -> List[str]:
         """Mock implementation of block_packages."""
         self.block_packages_call_count += 1

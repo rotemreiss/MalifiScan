@@ -43,8 +43,7 @@ artifactory.conf
 google-credentials.json
 service-account.json
 *-key.json
-
-# OSV-JFrog specific
+# Malifiscan specific
 osv_cache/
 scans/
 scan_results/

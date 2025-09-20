@@ -5,7 +5,6 @@ CLI tool for manual testing and administration of the Security Scanner.
 This tool provides easy access to all core functionality for testing purposes:
 - Search for packages in package registry
 - Block/unblock packages manually  
-- View scan logs and storage data
 - Check service health
 - Run manual scans
 - Manage test data
@@ -14,10 +13,8 @@ Usage:
     python cli.py --help
     python cli.py registry search <package-name>
     python cli.py registry block <package-name> <ecosystem>
-    python cli.py logs view --limit 10
     python cli.py scan crossref
     python cli.py health check
-    python cli.py interactive  # Start interactive mode
 """
 
 import asyncio
@@ -33,7 +30,6 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Prompt, Confirm
-import cmd
 
 # Import our application components
 from src.config.config_loader import ConfigLoader
@@ -602,140 +598,6 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error unblocking package: {e}", style="red")
             return False
 
-    async def view_logs(self, limit: int = 20, filter_level: Optional[str] = None) -> bool:
-        """View scan results and logs from storage."""
-        try:
-            if not self.app:
-                self.console.print("❌ Application not initialized", style="red")
-                return False
-            
-            # Use the core app for business logic
-            logs_result = await self.app.get_scan_logs_data(limit, filter_level)
-            
-            if not logs_result["success"]:
-                error_msg = logs_result.get("error", "Unknown error")
-                self.console.print(f"❌ Error retrieving logs: {error_msg}", style="red")
-                return False
-            
-            scan_results = logs_result["scan_results"]
-            
-            if not scan_results:
-                self.console.print("📝 No scan results found", style="yellow")
-                return True
-            
-            # Create table for scan results
-            table = Table(title=f"Recent Scan Results (Last {len(scan_results)})")
-            table.add_column("Scan ID", style="cyan")
-            table.add_column("Status", style="magenta")
-            table.add_column("Started", style="blue")
-            table.add_column("Duration", style="green")
-            table.add_column("Packages Found", style="red")
-            table.add_column("Packages Blocked", style="yellow")
-            
-            for result in scan_results:
-                status_emoji = "✅" if result.success else "❌"
-                duration = f"{result.duration_seconds:.1f}s" if result.duration_seconds else "N/A"
-                
-                table.add_row(
-                    result.scan_id[:8],  # Short ID
-                    f"{status_emoji} {result.status.value}",
-                    result.started_at.strftime("%Y-%m-%d %H:%M"),
-                    duration,
-                    str(len(result.packages_found)),
-                    str(result.blocked_packages)
-                )
-            
-            self.console.print(table)
-            
-            # Show any error details
-            for result in scan_results[:5]:  # Show details for recent failed scans
-                if not result.success and result.error_message:
-                    self.console.print(
-                        Panel(
-                            f"Error in scan {result.scan_id[:8]}: {result.error_message}",
-                            title="Recent Error",
-                            border_style="red"
-                        )
-                    )
-            
-            return True
-            
-        except Exception as e:
-            self.console.print(f"❌ Error viewing logs: {e}", style="red")
-            return False
-
-    async def view_malicious_packages(self, limit: int = 20, ecosystem: Optional[str] = None, hours: Optional[int] = None) -> bool:
-        """View known malicious packages from storage."""
-        try:
-            if not self.app:
-                self.console.print("❌ Application not initialized", style="red")
-                return False
-            
-            # Use the core app for business logic
-            packages_result = await self.app.get_malicious_packages_data(limit, ecosystem, hours)
-            
-            if not packages_result["success"]:
-                error_msg = packages_result.get("error", "Unknown error")
-                self.console.print(f"❌ Error retrieving packages: {error_msg}", style="red")
-                return False
-            
-            packages = packages_result["filtered_packages"]
-            ecosystems = packages_result["ecosystems"]
-            filter_info = packages_result["filter_info"]
-            
-            if not packages:
-                filter_desc = f" ({ecosystem} ecosystem)" if ecosystem else ""
-                time_desc = f" (last {hours} hours)" if hours else ""
-                self.console.print(f"📦 No malicious packages found{filter_desc}{time_desc}", style="yellow")
-                return True
-            
-            # Show summary first
-            filter_info_display = ""
-            if ecosystem:
-                filter_info_display += f" (filtered to {ecosystem})"
-            if hours:
-                filter_info_display += f" (last {hours} hours)"
-                
-            self.console.print(f"📊 Total malicious packages: {packages_result['total_packages']}{filter_info_display}")
-            for eco, count in ecosystems.items():
-                self.console.print(f"  • {eco}: {count} packages")
-            
-            # Show packages table
-            title = f"Known Malicious Packages (Showing {len(packages)})"
-            if ecosystem:
-                title += f" - {ecosystem.upper()} only"
-            if hours:
-                title += f" - Last {hours}h"
-                
-            table = Table(title=title)
-            table.add_column("Name", style="cyan")
-            table.add_column("Ecosystem", style="magenta")
-            table.add_column("Version", style="blue")
-            table.add_column("Modified", style="green")
-            table.add_column("Advisory ID", style="yellow")
-            table.add_column("Summary", style="white")
-            
-            for pkg in packages:
-                # Format the modified/published date
-                pkg_time = pkg.modified_at or pkg.published_at
-                time_str = pkg_time.strftime("%Y-%m-%d %H:%M") if pkg_time else "N/A"
-                
-                table.add_row(
-                    pkg.name,
-                    pkg.ecosystem,
-                    pkg.version or "N/A",
-                    time_str,
-                    pkg.advisory_id,
-                    (pkg.summary[:40] + "...") if pkg.summary and len(pkg.summary) > 40 else pkg.summary or "N/A"
-                )
-            
-            self.console.print(table)
-            return True
-            
-        except Exception as e:
-            self.console.print(f"❌ Error viewing malicious packages: {e}", style="red")
-            return False
-
     async def fetch_feed_packages(self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48) -> bool:
         """Fetch fresh malicious packages from the packages feed."""
         try:
@@ -963,92 +825,6 @@ class SecurityScannerCLI:
             return False
 
 
-class InteractiveCLI(cmd.Cmd):
-    """Interactive command line interface."""
-    
-    intro = '''
-🔒 Security Scanner Interactive CLI
-Type 'help' or '?' for available commands.
-Type 'exit' or press Ctrl+C to quit.
-    '''
-    prompt = '(security-scanner) '
-    
-    def __init__(self, cli: SecurityScannerCLI):
-        super().__init__()
-        self.cli = cli
-    
-    def do_search(self, line):
-        """Search for a package: search <package-name> [ecosystem]"""
-        parts = line.split()
-        if not parts:
-            print("Usage: search <package-name> [ecosystem]")
-            return
-        
-        package_name = parts[0]
-        ecosystem = parts[1] if len(parts) > 1 else "npm"
-        
-        asyncio.run(self.cli.registry_search(package_name, ecosystem))
-    
-    def do_block(self, line):
-        """Block a package: block <package-name> [ecosystem] [version]"""
-        parts = line.split()
-        if not parts:
-            print("Usage: block <package-name> [ecosystem] [version]")
-            return
-        
-        package_name = parts[0]
-        ecosystem = parts[1] if len(parts) > 1 else "npm"
-        version = parts[2] if len(parts) > 2 else "*"
-        
-        asyncio.run(self.cli.registry_block(package_name, ecosystem, version))
-    
-    def do_logs(self, line):
-        """View logs: logs [limit]"""
-        limit = int(line) if line.strip() else 20
-        asyncio.run(self.cli.view_logs(limit))
-    
-    def do_packages(self, line):
-        """View malicious packages: packages [limit] [ecosystem] [hours]"""
-        parts = line.strip().split() if line.strip() else []
-        limit = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 20
-        ecosystem = parts[1] if len(parts) > 1 else None
-        hours = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
-        asyncio.run(self.cli.view_malicious_packages(limit, ecosystem, hours))
-    
-    def do_health(self, line):
-        """Check service health: health"""
-        asyncio.run(self.cli.health_check())
-    
-    def do_scan(self, line):
-        """Run manual scan: scan"""
-        asyncio.run(self.cli.run_manual_scan())
-    
-    def do_feed(self, line):
-        """Fetch from packages feed: feed [ecosystem] [limit]"""
-        parts = line.strip().split() if line.strip() else []
-        ecosystem = parts[0] if len(parts) > 0 else None
-        limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 100
-        hours = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 48
-        asyncio.run(self.cli.fetch_feed_packages(ecosystem, limit, hours))
-    
-    def do_testdata(self, line):
-        """Create test data: testdata"""
-        asyncio.run(self.cli.create_test_data())
-    
-    def do_cleanup(self, line):
-        """Clean up test data: cleanup"""
-        asyncio.run(self.cli.cleanup_test_data())
-    
-    def do_exit(self, line):
-        """Exit the interactive CLI"""
-        print("Goodbye! 👋")
-        return True
-    
-    def do_quit(self, line):
-        """Exit the interactive CLI"""
-        return self.do_exit(line)
-
-
 async def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1058,12 +834,9 @@ async def main():
 Examples:
   python cli.py registry search lodash npm
   python cli.py registry block evil-package npm  
-  python cli.py logs view --limit 10
-  python cli.py logs packages --ecosystem npm --hours 72
   python cli.py feed fetch --ecosystem npm --limit 50 --hours 24
   python cli.py scan crossref
   python cli.py health check
-  python cli.py interactive
         """
     )
     
@@ -1101,18 +874,6 @@ Examples:
     results_parser.add_argument("--scan-id", type=str, help="Show detailed results for specific scan ID")
     results_parser.add_argument("--limit", type=int, default=3, help="Number of recent scans to show (default: 3)")
     
-    # Logs commands
-    logs_parser = subparsers.add_parser("logs", help="View logs and scan results")
-    logs_subparsers = logs_parser.add_subparsers(dest="logs_action")
-    
-    view_parser = logs_subparsers.add_parser("view", help="View scan results")
-    view_parser.add_argument("--limit", "-l", type=int, default=20, help="Number of results to show")
-    
-    packages_parser = logs_subparsers.add_parser("packages", help="View malicious packages")
-    packages_parser.add_argument("--limit", "-l", type=int, default=20, help="Number of packages to show")
-    packages_parser.add_argument("--ecosystem", "-e", type=str, help="Filter by ecosystem (npm, pypi, etc.)")
-    packages_parser.add_argument("--hours", type=int, help="Show packages from last N hours")
-    
     # Feed commands
     feed_parser = subparsers.add_parser("feed", help="Packages feed operations")
     feed_subparsers = feed_parser.add_subparsers(dest="feed_action")
@@ -1132,9 +893,6 @@ Examples:
     test_subparsers = test_parser.add_subparsers(dest="test_action")
     test_subparsers.add_parser("create", help="Create test data")
     test_subparsers.add_parser("cleanup", help="Clean up test data")
-    
-    # Interactive mode
-    subparsers.add_parser("interactive", help="Start interactive mode")
     
     args = parser.parse_args()
     
@@ -1156,12 +914,6 @@ Examples:
                 await cli.registry_search(args.package_name, args.ecosystem)
             elif args.registry_action == "block":
                 await cli.registry_block(args.package_name, args.ecosystem, args.version)
-                
-        elif args.command == "logs":
-            if args.logs_action == "view":
-                await cli.view_logs(args.limit)
-            elif args.logs_action == "packages":
-                await cli.view_malicious_packages(args.limit, args.ecosystem, args.hours)
                 
         elif args.command == "feed":
             if args.feed_action == "fetch":
@@ -1185,10 +937,6 @@ Examples:
                 await cli.create_test_data()
             elif args.test_action == "cleanup":
                 await cli.cleanup_test_data()
-                
-        elif args.command == "interactive":
-            interactive = InteractiveCLI(cli)
-            interactive.cmdloop()
     
     except KeyboardInterrupt:
         cli.console.print("\n👋 Goodbye!", style="blue")

@@ -119,140 +119,6 @@ class TestDataManagementUseCase:
         assert use_case.logger is not None
 
     @pytest.mark.asyncio
-    async def test_get_malicious_packages_success_no_filters(
-        self, data_management_use_case, mock_storage_service, sample_malicious_packages
-    ):
-        """Test successful retrieval of malicious packages without filters."""
-        mock_storage_service.get_known_malicious_packages.return_value = sample_malicious_packages
-        
-        result = await data_management_use_case.get_malicious_packages()
-        
-        assert result["success"] is True
-        assert result["total_packages"] == 3
-        assert len(result["filtered_packages"]) == 3
-        assert result["ecosystems"] == {"PyPI": 2, "npm": 1}
-        assert result["filter_info"]["limit"] == 20
-        assert result["filter_info"]["ecosystem"] is None
-        assert result["filter_info"]["hours"] is None
-        mock_storage_service.get_known_malicious_packages.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_get_malicious_packages_with_ecosystem_filter(
-        self, data_management_use_case, mock_storage_service, sample_malicious_packages
-    ):
-        """Test retrieval of malicious packages with ecosystem filter."""
-        mock_storage_service.get_known_malicious_packages.return_value = sample_malicious_packages
-        
-        result = await data_management_use_case.get_malicious_packages(ecosystem="PyPI")
-        
-        assert result["success"] is True
-        assert result["total_packages"] == 2
-        assert len(result["filtered_packages"]) == 2
-        assert result["ecosystems"] == {"PyPI": 2}
-        assert result["filter_info"]["ecosystem"] == "PyPI"
-        
-        # Verify only PyPI packages are returned
-        for pkg in result["filtered_packages"]:
-            assert pkg.ecosystem == "PyPI"
-
-    @pytest.mark.asyncio
-    async def test_get_malicious_packages_with_hours_filter(
-        self, data_management_use_case, mock_storage_service, sample_malicious_packages
-    ):
-        """Test retrieval of malicious packages with hours filter."""
-        mock_storage_service.get_known_malicious_packages.return_value = sample_malicious_packages
-        
-        result = await data_management_use_case.get_malicious_packages(hours=48)
-        
-        assert result["success"] is True
-        # Should return packages modified within 48 hours (2 packages: evil-package-1 and evil-package-3)
-        assert result["total_packages"] == 2
-        assert len(result["filtered_packages"]) == 2
-        assert result["filter_info"]["hours"] == 48
-
-    @pytest.mark.asyncio
-    async def test_get_malicious_packages_with_limit(
-        self, data_management_use_case, mock_storage_service, sample_malicious_packages
-    ):
-        """Test retrieval of malicious packages with limit."""
-        mock_storage_service.get_known_malicious_packages.return_value = sample_malicious_packages
-        
-        result = await data_management_use_case.get_malicious_packages(limit=2)
-        
-        assert result["success"] is True
-        assert result["total_packages"] == 3  # Total before limiting
-        assert len(result["filtered_packages"]) == 2  # Limited to 2
-        assert result["filter_info"]["limit"] == 2
-
-    @pytest.mark.asyncio
-    async def test_get_malicious_packages_empty_storage(
-        self, data_management_use_case, mock_storage_service
-    ):
-        """Test retrieval when storage is empty."""
-        mock_storage_service.get_known_malicious_packages.return_value = []
-        
-        result = await data_management_use_case.get_malicious_packages()
-        
-        assert result["success"] is True
-        assert result["total_packages"] == 0
-        assert len(result["filtered_packages"]) == 0
-        assert result["ecosystems"] == {}
-
-    @pytest.mark.asyncio
-    async def test_get_malicious_packages_storage_error(
-        self, data_management_use_case, mock_storage_service
-    ):
-        """Test retrieval when storage service fails."""
-        mock_storage_service.get_known_malicious_packages.side_effect = Exception("Storage error")
-        
-        result = await data_management_use_case.get_malicious_packages()
-        
-        assert result["success"] is False
-        assert "Storage error" in result["error"]
-        assert result["total_packages"] == 0
-        assert len(result["filtered_packages"]) == 0
-
-    @pytest.mark.asyncio
-    async def test_get_scan_logs_success(
-        self, data_management_use_case, mock_storage_service, sample_scan_results
-    ):
-        """Test successful retrieval of scan logs."""
-        mock_storage_service.get_scan_results.return_value = sample_scan_results
-        
-        result = await data_management_use_case.get_scan_logs()
-        
-        assert result["success"] is True
-        assert len(result["scan_results"]) == 2
-        assert result["total_results"] == 2
-        mock_storage_service.get_scan_results.assert_called_once_with(limit=20)
-
-    @pytest.mark.asyncio
-    async def test_get_scan_logs_with_limit(
-        self, data_management_use_case, mock_storage_service, sample_scan_results
-    ):
-        """Test retrieval of scan logs with custom limit."""
-        mock_storage_service.get_scan_results.return_value = sample_scan_results
-        
-        result = await data_management_use_case.get_scan_logs(limit=10)
-        
-        assert result["success"] is True
-        mock_storage_service.get_scan_results.assert_called_once_with(limit=10)
-
-    @pytest.mark.asyncio
-    async def test_get_scan_logs_storage_error(
-        self, data_management_use_case, mock_storage_service
-    ):
-        """Test retrieval when scan logs storage fails."""
-        mock_storage_service.get_scan_results.side_effect = Exception("Scan logs error")
-        
-        result = await data_management_use_case.get_scan_logs()
-        
-        assert result["success"] is False
-        assert "Scan logs error" in result["error"]
-        assert result["scan_results"] == []
-        assert result["total_results"] == 0
-
-    @pytest.mark.asyncio
     async def test_fetch_osv_packages_success(
         self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
@@ -323,21 +189,6 @@ class TestDataManagementUseCase:
         assert result["ecosystems"] == {}
 
     @pytest.mark.asyncio
-    async def test_get_malicious_packages_case_insensitive_ecosystem(
-        self, data_management_use_case, mock_storage_service, sample_malicious_packages
-    ):
-        """Test that ecosystem filtering is case insensitive."""
-        mock_storage_service.get_known_malicious_packages.return_value = sample_malicious_packages
-        
-        result = await data_management_use_case.get_malicious_packages(ecosystem="pypi")
-        
-        assert result["success"] is True
-        assert result["total_packages"] == 2
-        # Should match "PyPI" packages despite lowercase input
-        for pkg in result["filtered_packages"]:
-            assert pkg.ecosystem == "PyPI"
-
-    @pytest.mark.asyncio
     async def test_fetch_osv_packages_case_insensitive_ecosystem(
         self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
@@ -353,31 +204,16 @@ class TestDataManagementUseCase:
             assert pkg.ecosystem == "npm"
 
     @pytest.mark.asyncio
-    async def test_get_malicious_packages_with_published_at_only(
-        self, data_management_use_case, mock_storage_service
+    async def test_fetch_osv_packages_case_insensitive_ecosystem(
+        self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
-        """Test hours filtering when package only has published_at."""
-        now = datetime.now()
-        recent_time = now - timedelta(hours=12)
+        """Test that OSV ecosystem filtering is case insensitive."""
+        mock_packages_feed.fetch_malicious_packages.return_value = sample_malicious_packages
         
-        package_with_published_only = MaliciousPackage(
-            name="package-published-only",
-            version="1.0.0",
-            ecosystem="PyPI",
-            package_url="pkg:pypi/package-published-only@1.0.0",
-            advisory_id="OSV-2023-0004",
-            summary="Package with published_at only",
-            details="Test package",
-            aliases=[],
-            affected_versions=["1.0.0"],
-            database_specific={},
-            published_at=recent_time,
-            modified_at=None
-        )
-        
-        mock_storage_service.get_known_malicious_packages.return_value = [package_with_published_only]
-        
-        result = await data_management_use_case.get_malicious_packages(hours=24)
+        result = await data_management_use_case.fetch_osv_packages(ecosystem="NPM")
         
         assert result["success"] is True
-        assert result["total_packages"] == 1  # Should be included based on published_at
+        assert result["total_packages"] == 1
+        # Should match "npm" packages despite uppercase input
+        for pkg in result["packages"]:
+            assert pkg.ecosystem == "npm"
