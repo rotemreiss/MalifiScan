@@ -770,6 +770,60 @@ class JFrogRegistry(PackagesRegistryService):
         """Get the registry name for identification."""
         return "JFrog Artifactory"
     
+    async def list_blocked_packages(self, ecosystem: str) -> List[Dict[str, Any]]:
+        """
+        List currently blocked packages by retrieving exclusion patterns.
+        
+        Args:
+            ecosystem: Package ecosystem to filter by
+            
+        Returns:
+            List of dictionaries containing pattern information
+        """
+        try:
+            logger.info(f"Listing blocked packages for ecosystem: {ecosystem}")
+            
+            # Get repositories for this ecosystem
+            repos = await self.discover_repositories_by_ecosystem(ecosystem)
+            
+            if not repos:
+                logger.warning(f"No repositories found for ecosystem {ecosystem}")
+                return []
+            
+            blocked_patterns = []
+            session = await self._get_session()
+            
+            try:
+                for repo_name in repos:
+                    repo_config_url = f"{self.base_url}/artifactory/api/repositories/{repo_name}"
+                    
+                    async with session.get(repo_config_url) as response:
+                        if response.status == 200:
+                            repo_config = await response.json()
+                            excludes_pattern = repo_config.get('excludesPattern', '')
+                            
+                            if excludes_pattern:
+                                patterns = [p.strip() for p in excludes_pattern.split(",") if p.strip()]
+                                for pattern in patterns:
+                                    blocked_patterns.append({
+                                        'repository': repo_name,
+                                        'pattern': pattern,
+                                        'ecosystem': ecosystem
+                                    })
+                        else:
+                            logger.warning(f"Failed to get repository config for {repo_name}: {response.status}")
+                            
+            finally:
+                if session:
+                    await session.close()
+            
+            logger.info(f"Found {len(blocked_patterns)} exclusion patterns for {ecosystem}")
+            return blocked_patterns
+            
+        except Exception as e:
+            logger.error(f"Error listing blocked packages for {ecosystem}: {e}")
+            raise
+    
     async def close(self):
         """Close the HTTP session."""
         if self._session and not self._session.closed:

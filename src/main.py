@@ -5,7 +5,7 @@ import logging
 import logging.handlers
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
 
 from .config import ConfigLoader, Config, ConfigError
 from .core.usecases import SecurityScanner
@@ -15,6 +15,9 @@ from .core.usecases.package_management import PackageManagementUseCase
 from .core.usecases.data_management import DataManagementUseCase
 from .core.usecases.health_management import HealthManagementUseCase
 from .core.usecases.test_data_management import TestDataManagementUseCase
+from .core.usecases.registry_management import RegistryManagementUseCase
+from .core.usecases.feed_management import FeedManagementUseCase
+from .core.usecases.proactive_security import ProactiveSecurityUseCase
 from .factories import ServiceFactory
 
 
@@ -81,6 +84,9 @@ class SecurityScannerApp:
         self.health_management: Optional[HealthManagementUseCase] = None
         self.test_data_management: Optional[TestDataManagementUseCase] = None
         self.scan_results_manager: Optional[ScanResultsManager] = None
+        self.registry_management: Optional[RegistryManagementUseCase] = None
+        self.feed_management: Optional[FeedManagementUseCase] = None
+        self.proactive_security: Optional[ProactiveSecurityUseCase] = None
         
         self.logger = logging.getLogger(__name__)
     
@@ -142,6 +148,19 @@ class SecurityScannerApp:
             
             self.scan_results_manager = ScanResultsManager(
                 storage_service=self.services["storage_service"],
+                registry_service=self.services["packages_registry"]
+            )
+            
+            self.registry_management = RegistryManagementUseCase(
+                registry_service=self.services["packages_registry"]
+            )
+            
+            self.feed_management = FeedManagementUseCase(
+                packages_feed=self.services["packages_feed"]
+            )
+            
+            self.proactive_security = ProactiveSecurityUseCase(
+                packages_feed=self.services["packages_feed"],
                 registry_service=self.services["packages_registry"]
             )
             
@@ -237,6 +256,36 @@ class SecurityScannerApp:
             raise RuntimeError("Application not initialized")
         
         return await self.security_analysis.crossref_analysis(hours, ecosystem, limit, save_report)
+    
+    async def security_crossref_analysis_with_blocking(
+        self, 
+        hours: int = 6, 
+        ecosystem: str = "npm", 
+        limit: Optional[int] = None, 
+        save_report: bool = True,
+        block_packages: bool = False,
+        progress_callback: Optional[Any] = None
+    ) -> dict:
+        """
+        Cross-reference OSV malicious packages with JFrog registry, with optional proactive blocking.
+        
+        Args:
+            hours: Hours ago to look for recent malicious packages
+            ecosystem: Package ecosystem (default: npm)
+            limit: Maximum number of malicious packages to check
+            save_report: Whether to save the scan result to storage (default: True)
+            block_packages: Whether to block malicious packages before analysis (default: False)
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            Dictionary containing analysis results including blocking information
+        """
+        if not self.security_analysis:
+            raise RuntimeError("Application not initialized")
+        
+        return await self.security_analysis.crossref_analysis_with_blocking(
+            hours, ecosystem, limit, save_report, block_packages, progress_callback
+        )
     
     async def block_package_in_registry(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> dict:
         """

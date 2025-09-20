@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Callable
 import logging
 
 from ..entities.malicious_package import MaliciousPackage
@@ -59,7 +59,7 @@ class SecurityAnalysisUseCase:
         errors = []
         
         try:
-            self.logger.info(f"Starting security cross-reference analysis for {ecosystem} packages from last {hours} hours (scan_id: {scan_id})")
+            self.logger.debug(f"Starting security cross-reference analysis for {ecosystem} packages from last {hours} hours (scan_id: {scan_id})")
             
             # Step 1: Fetch recent malicious packages from OSV
             malicious_packages = await self.packages_feed.fetch_malicious_packages(
@@ -91,7 +91,7 @@ class SecurityAnalysisUseCase:
                     "report_saved": save_report and self.storage_service is not None
                 }
             
-            self.logger.info(f"Found {len(malicious_packages)} malicious {ecosystem} packages to check")
+            self.logger.debug(f"Found {len(malicious_packages)} malicious {ecosystem} packages to check")
             
             # Step 2: Check each malicious package against JFrog
             
@@ -125,7 +125,7 @@ class SecurityAnalysisUseCase:
             safe_packages = []
             
             # Get registry name for dynamic field naming
-            registry_name = await self.registry_service.get_registry_name()
+            registry_name = self.registry_service.get_registry_name()
             match_builder = RegistryPackageMatchBuilder(registry_name)
             
             for malicious_pkg in malicious_packages:
@@ -194,7 +194,7 @@ class SecurityAnalysisUseCase:
                         malicious_packages, [], found_malicious_packages, errors
                     )
                     report_saved = True
-                    self.logger.info(f"Scan result saved to storage (scan_id: {scan_id})")
+                    self.logger.debug(f"Scan result saved to storage (scan_id: {scan_id})")
                 except Exception as e:
                     self.logger.error(f"Failed to save scan result: {e}")
                     errors.append(f"Failed to save scan result: {e}")
@@ -232,6 +232,119 @@ class SecurityAnalysisUseCase:
                 "safe_packages": [],
                 "errors": [],
                 "not_found_count": 0
+            }
+    
+    async def crossref_analysis_with_blocking(
+        self, 
+        hours: int = 6, 
+        ecosystem: str = "npm", 
+        limit: Optional[int] = None,
+        save_report: bool = True,
+        block_packages: bool = False,
+        progress_callback: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Cross-reference OSV malicious packages with JFrog registry, with optional proactive blocking.
+        
+        Args:
+            hours: Hours ago to look for recent malicious packages
+            ecosystem: Package ecosystem (default: npm)
+            limit: Maximum number of malicious packages to check
+            save_report: Whether to save the scan result to storage (default: True)
+            block_packages: Whether to block malicious packages before analysis (default: False)
+            progress_callback: Optional callback for progress updates
+            
+        Returns:
+            Dictionary containing analysis results including blocking information
+        """
+        scan_id = str(uuid.uuid4())
+        start_time = datetime.now(timezone.utc)
+        errors = []
+        blocking_result = None
+        
+        try:
+            self.logger.debug(f"Starting enhanced security cross-reference analysis for {ecosystem} packages from last {hours} hours (scan_id: {scan_id}, blocking={block_packages})")
+            
+            # Step 1: Optional proactive blocking
+            if block_packages:
+                try:
+                    if progress_callback:
+                        progress_callback("Proactively blocking malicious packages...", 0, 100)
+                    
+                    from .proactive_security import ProactiveSecurityUseCase
+                    proactive_usecase = ProactiveSecurityUseCase(
+                        packages_feed=self.packages_feed,
+                        registry_service=self.registry_service
+                    )
+                    
+                    def blocking_progress(message, current, total):
+                        if progress_callback:
+                            # Scale progress to 0-40% range for blocking phase
+                            scaled_progress = int((current / total) * 40)
+                            progress_callback(f"Blocking: {message}", scaled_progress, 100)
+                    
+                    blocking_result = await proactive_usecase.block_recent_malicious_packages(
+                        hours=hours,
+                        ecosystem=ecosystem,
+                        limit=limit,
+                        progress_callback=blocking_progress
+                    )
+                    
+                    if not blocking_result["success"]:
+                        self.logger.warning(f"Proactive blocking failed: {blocking_result.get('error', 'Unknown error')}")
+                        errors.append(f"Proactive blocking failed: {blocking_result.get('error', 'Unknown error')}")
+                    else:
+                        self.logger.debug(f"Proactive blocking complete: {blocking_result['success_count']} packages blocked")
+                        
+                except Exception as e:
+                    self.logger.error(f"Error during proactive blocking: {e}")
+                    errors.append(f"Proactive blocking error: {str(e)}")
+            
+            # Step 2: Regular cross-reference analysis
+            if progress_callback:
+                progress_callback("Running cross-reference analysis...", 50 if block_packages else 0, 100)
+            
+            analysis_result = await self.crossref_analysis(hours, ecosystem, limit, save_report)
+            
+            if progress_callback:
+                progress_callback("Analysis complete", 100, 100)
+            
+            # Combine results
+            combined_result = analysis_result.copy()
+            if blocking_result:
+                combined_result["blocking_result"] = blocking_result
+                combined_result["packages_blocked"] = blocking_result.get("blocked_packages", [])
+                combined_result["blocking_errors"] = blocking_result.get("errors", [])
+                # Add blocking errors to main errors list
+                combined_result["errors"].extend(errors)
+            else:
+                combined_result["blocking_result"] = None
+                combined_result["packages_blocked"] = []
+                combined_result["blocking_errors"] = []
+            
+            return combined_result
+            
+        except Exception as e:
+            self.logger.error(f"Error during enhanced security cross-reference analysis: {e}")
+            # Clean up registry connection on error
+            if self.registry_service:
+                try:
+                    await self.registry_service.close()
+                except Exception:
+                    pass
+            
+            return {
+                "success": False,
+                "error": str(e),
+                "total_osv_packages": 0,
+                "filtered_packages": 0,
+                "found_matches": [],
+                "safe_packages": [],
+                "errors": errors + [str(e)],
+                "not_found_count": 0,
+                "blocking_result": blocking_result,
+                "packages_blocked": blocking_result.get("blocked_packages", []) if blocking_result else [],
+                "blocking_errors": blocking_result.get("errors", []) if blocking_result else []
             }
     
     async def _save_scan_result(

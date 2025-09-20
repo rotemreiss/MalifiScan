@@ -85,6 +85,7 @@ class SecurityScannerCLI:
             'src.providers.registries.jfrog_registry',
             'src.core.usecases.security_analysis',
             'src.core.usecases.data_management',
+            'src.core.usecases.proactive_security',
             'src.factories.service_factory',
             'src.main',
             'asyncio',
@@ -122,7 +123,12 @@ class SecurityScannerCLI:
                     'found malicious packages',
                     'will fetch first',
                     'successfully fetched',
-                    'fetched packages from osv feed'
+                    'fetched packages from osv feed',
+                    'proactive blocking complete',
+                    'blocking package',
+                    'successfully blocked',
+                    'failed to block',
+                    'blocking packages in batch'
                 ]
                 
                 # Allow error and warning messages through
@@ -175,23 +181,23 @@ class SecurityScannerCLI:
         try:
             self.console.print("🔍 Checking package registry health...")
             
-            registry = self.services['registry']
-            is_healthy = await registry.health_check()
+            if not self.app or not self.app.registry_management:
+                self.console.print("❌ Registry management not initialized", style="red")
+                return False
             
-            if is_healthy:
-                self.console.print("✅ Package registry is healthy", style="green")
-                await registry.close()
+            # Use the registry management use case
+            result = await self.app.registry_management.health_check()
+            
+            if result["success"] and result["healthy"]:
+                self.console.print(f"✅ {result['registry_name']} is healthy and accessible", style="green")
                 return True
             else:
-                self.console.print("❌ Package registry health check failed", style="red")
-                await registry.close()
+                error_msg = result.get("error", "Registry is not accessible")
+                self.console.print(f"❌ Registry health check failed: {error_msg}", style="red")
                 return False
                 
         except Exception as e:
             self.console.print(f"❌ Error checking package registry health: {e}", style="red")
-            registry = self.services.get('registry')
-            if registry:
-                await registry.close()
             return False
 
     async def registry_search(self, package_name: str, ecosystem: str = "npm") -> bool:
@@ -199,31 +205,16 @@ class SecurityScannerCLI:
         try:
             self.console.print(f"🔍 Searching for package: {package_name} ({ecosystem})")
             
-            if not self.app:
-                self.console.print("❌ Application not initialized", style="red")
+            if not self.app or not self.app.registry_management:
+                self.console.print("❌ Registry management not initialized", style="red")
                 return False
             
-            # Temporarily suppress verbose logging for cleaner CLI output
-            registry_logger = logging.getLogger('src.providers.registries.jfrog_registry')
-            package_mgmt_logger = logging.getLogger('src.core.usecases.package_management')
-            original_registry_level = registry_logger.level
-            original_package_mgmt_level = package_mgmt_logger.level
-            registry_logger.setLevel(logging.WARNING)
-            package_mgmt_logger.setLevel(logging.WARNING)
-            
-            try:
-                # Use the core app for business logic
-                search_result = await self.app.search_package_in_registry(package_name, ecosystem)
-            finally:
-                # Restore original logging levels
-                registry_logger.setLevel(original_registry_level)
-                package_mgmt_logger.setLevel(original_package_mgmt_level)
+            # Use the registry management use case
+            search_result = await self.app.registry_management.search_package(package_name, ecosystem)
             
             if not search_result["success"]:
-                if search_result.get("error"):
-                    self.console.print(f"❌ Error: {search_result['error']}", style="red")
-                else:
-                    self.console.print("❌ Package registry is not accessible", style="red")
+                error_msg = search_result.get("error", "Unknown error")
+                self.console.print(f"❌ Search failed: {error_msg}", style="red")
                 return False
             
             # Display results using rich formatting
@@ -282,20 +273,92 @@ class SecurityScannerCLI:
                 await registry.close()
             return False
 
-    async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False) -> bool:
+    async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False, block: bool = False) -> bool:
         """Cross-reference malicious packages from feed with package registry."""
         try:
             self.console.print(f"🔍 Security Cross-Reference Analysis", style="bold cyan")
             self.console.print(f"📅 Looking for malicious packages from the last {hours} hours")
             self.console.print(f"🏗️ Ecosystem: {ecosystem}")
+            if block:
+                self.console.print(f"🚫 Block mode: Will proactively block malicious packages", style="bold red")
             self.console.print()
             
             if not self.app:
                 self.console.print("❌ Application not initialized", style="red")
                 return False
             
-            # Step 1: Show progress for feed fetch
-            self.console.print("Step 1: Fetching recent malicious packages from feed...", style="yellow")
+            # Step 1: Get malicious packages from feed
+            self.console.print("Step 1: Fetching malicious packages from OSV feed...", style="yellow")
+            
+            malicious_packages = []
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=self.console,
+                transient=False
+            ) as progress:
+                fetch_task = progress.add_task("Fetching malicious packages from OSV feed...", total=None)
+                
+                # Fetch packages from the feed
+                fetch_result = await self.app.fetch_packages_feed_data(ecosystem, limit or 1000, hours)
+                
+                if not fetch_result["success"]:
+                    progress.update(fetch_task, description=f"❌ Feed fetch failed")
+                    if fetch_result.get("error"):
+                        self.console.print(f"❌ Error: {fetch_result['error']}", style="red")
+                    return False
+                
+                progress.update(fetch_task, description=f"✅ Feed fetch complete")
+                malicious_packages = fetch_result["packages"]
+            
+            if not malicious_packages:
+                self.console.print(f"✅ No malicious {ecosystem} packages found in the last {hours} hours", style="green")
+                return True
+            
+            self.console.print(f"📦 Found {len(malicious_packages)} malicious {ecosystem} packages from feed", style="green")
+            
+            # Step 2: Block packages (if selected)
+            if block:
+                self.console.print("\nStep 2: Blocking malicious packages in registry...", style="yellow")
+                
+                blocked_count = 0
+                block_errors = 0
+                
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=self.console,
+                    transient=False
+                ) as progress:
+                    block_task = progress.add_task("Blocking packages...", total=len(malicious_packages))
+                    
+                    for package in malicious_packages:
+                        try:
+                            # Use the app's block functionality
+                            block_result = await self.app.block_package_in_registry(
+                                package.name, 
+                                package.ecosystem, 
+                                package.version or "*"
+                            )
+                            
+                            if block_result["success"]:
+                                blocked_count += 1
+                            else:
+                                block_errors += 1
+                                
+                        except Exception as e:
+                            block_errors += 1
+                            
+                        progress.advance(block_task, 1)
+                        progress.update(block_task, description=f"Blocked: {blocked_count} | Errors: {block_errors}")
+                
+                self.console.print(f"✅ Blocked {blocked_count} packages, {block_errors} errors", style="green" if block_errors == 0 else "yellow")
+            
+            # Step 3: Search for malicious packages in registry
+            step_num = 3 if block else 2
+            self.console.print(f"\nStep {step_num}: Searching for malicious packages in registry...", style="yellow")
             
             with Progress(
                 SpinnerColumn(),
@@ -303,18 +366,21 @@ class SecurityScannerCLI:
                 console=self.console,
                 transient=False
             ) as progress:
-                fetch_task = progress.add_task("Running security cross-reference analysis...", total=None)
+                analysis_task = progress.add_task("Cross-referencing malicious packages with package registry...", total=None)
                 
                 # Use the core app for business logic
-                analysis_result = await self.app.security_crossref_analysis(hours, ecosystem, limit, not no_report)
+                analysis_result = await self.app.security_crossref_analysis_with_blocking(
+                    hours, ecosystem, limit, not no_report, False,  # Set block=False since we already blocked above
+                    progress_callback=lambda msg, current, total: progress.update(analysis_task, description=msg)
+                )
                 
                 if not analysis_result["success"]:
-                    progress.update(fetch_task, description=f"❌ Analysis failed")
+                    progress.update(analysis_task, description=f"❌ Analysis failed")
                     if analysis_result.get("error"):
                         self.console.print(f"❌ Error: {analysis_result['error']}", style="red")
                     return False
                 
-                progress.update(fetch_task, description=f"✅ Analysis complete")
+                progress.update(analysis_task, description=f"✅ Analysis complete")
             
             # Extract results
             found_matches = analysis_result["found_matches"]
@@ -323,34 +389,7 @@ class SecurityScannerCLI:
             not_found_count = analysis_result["not_found_count"]
             total_checked = analysis_result["filtered_packages"]
             
-            if total_checked == 0:
-                self.console.print(f"✅ No malicious {ecosystem} packages found in the last {hours} hours", style="green")
-                return True
-            
-            self.console.print(f"⚠️ Found {total_checked} malicious {ecosystem} packages to check", style="yellow")
-            
-            # Step 2: Show progress for package registry cross-reference
-            self.console.print("\nStep 2: Cross-referencing with package registry...", style="yellow")
-            
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                TextColumn("• Found: {task.fields[found]} | Safe: {task.fields[safe]} | Errors: {task.fields[errors]}"),
-                console=self.console,
-                transient=False
-            ) as progress:
-                task = progress.add_task(
-                    "Processing results...", 
-                    total=total_checked,
-                    found=len(found_matches),
-                    safe=len(safe_packages),
-                    errors=len(errors)
-                )
-                progress.advance(task, total_checked)
-            
-            # Step 3: Display results
+            # Display results
             self.console.print("\n" + "="*80, style="bold")
             self.console.print("🛡️ SECURITY ANALYSIS RESULTS", style="bold cyan")
             self.console.print("="*80, style="bold")
@@ -569,51 +608,23 @@ class SecurityScannerCLI:
         try:
             self.console.print(f"🚫 Blocking package: {package_name} ({ecosystem}) version {version}")
             
-            if not self.app:
-                self.console.print("❌ Application not initialized", style="red")
+            if not self.app or not self.app.registry_management:
+                self.console.print("❌ Registry management not initialized", style="red")
                 return False
             
-            # Temporarily suppress verbose logging for cleaner CLI output
-            package_mgmt_logger = logging.getLogger('src.core.usecases.package_management')
-            original_level = package_mgmt_logger.level
-            package_mgmt_logger.setLevel(logging.WARNING)
-            
-            try:
-                # Use the core app for business logic
-                block_result = await self.app.block_package_in_registry(package_name, ecosystem, version)
-            finally:
-                # Restore original logging level
-                package_mgmt_logger.setLevel(original_level)
+            # Use the registry management use case
+            block_result = await self.app.registry_management.block_package(package_name, ecosystem, version)
             
             if block_result["success"]:
-                self.console.print(f"✅ Successfully blocked {package_name} ({ecosystem}) version {version}", style="green")
-                self.console.print("📝 Package will be prevented from being downloaded or cached", style="blue")
-                
-                # Check repository information
-                registry = self.services.get('registry')
-                if registry:
-                    try:
-                        repos = await registry.discover_repositories_by_ecosystem(ecosystem)
-                        if repos:
-                            self.console.print(f"🔍 Applied exclusion patterns to repositories: {', '.join(repos)}", style="blue")
-                        else:
-                            self.console.print(f"⚠️  No repositories found for ecosystem {ecosystem}", style="yellow")
-                    except Exception as e:
-                        self.console.print(f"⚠️  Could not verify repository configuration: {e}", style="yellow")
-                    finally:
-                        # Ensure session is properly closed
-                        await registry.close()
-                
+                if block_result.get("already_blocked"):
+                    self.console.print(f"ℹ️ {block_result['message']}", style="blue")
+                else:
+                    self.console.print(f"✅ {block_result['message']}", style="green")
+                    self.console.print("📝 Package will be prevented from being downloaded or cached", style="blue")
                 return True
             else:
                 error_msg = block_result.get("error", "Unknown error")
                 self.console.print(f"❌ Failed to block {package_name}: {error_msg}", style="red")
-                
-                # Ensure session is properly closed even on failure
-                registry = self.services.get('registry')
-                if registry:
-                    await registry.close()
-                    
                 return False
                 
         except Exception as e:
@@ -629,106 +640,44 @@ class SecurityScannerCLI:
         try:
             self.console.print(f"📋 Listing blocked packages for ecosystem: {ecosystem}")
             
-            registry = self.services.get('registry')
-            if not registry:
-                self.console.print("❌ Registry service not available", style="red")
+            if not self.app or not self.app.registry_management:
+                self.console.print("❌ Registry management not initialized", style="red")
                 return False
             
-            # Temporarily suppress verbose logging
-            jfrog_logger = logging.getLogger('src.providers.registries.jfrog_registry')
-            original_level = jfrog_logger.level
-            jfrog_logger.setLevel(logging.WARNING)
+            # Use the registry management use case
+            list_result = await self.app.registry_management.list_blocked_packages(ecosystem)
             
-            try:
-                # Get repositories for this ecosystem
-                repos = await registry.discover_repositories_by_ecosystem(ecosystem)
-                
-                if not repos:
-                    self.console.print(f"⚠️  No repositories found for ecosystem {ecosystem}", style="yellow")
-                    return False
-                
-                # Check exclusion patterns in each repository
-                all_patterns = {}
-                
-                for repo_name in repos:
-                    session = await registry._get_session()
-                    repo_config_url = f"{registry.base_url}/artifactory/api/repositories/{repo_name}"
-                    
-                    async with session.get(repo_config_url) as response:
-                        if response.status == 200:
-                            repo_config = await response.json()
-                            excludes_pattern = repo_config.get('excludesPattern', '')
-                            
-                            if excludes_pattern:
-                                patterns = [p.strip() for p in excludes_pattern.split(",") if p.strip()]
-                                all_patterns[repo_name] = patterns
-                            else:
-                                all_patterns[repo_name] = []
-                
-                # Display results
-                if not any(all_patterns.values()):
-                    self.console.print(f"✅ No exclusion patterns found for {ecosystem} ecosystem", style="green")
-                    return True
-                
-                # Create summary table
-                total_patterns = sum(len(patterns) for patterns in all_patterns.values())
-                malifiscan_patterns = sum(1 for patterns in all_patterns.values() 
-                                        for pattern in patterns if "# Malifiscan:" in pattern)
-                
-                table = Table(title=f"Exclusion Patterns Summary - {ecosystem.upper()}")
-                table.add_column("Repository", style="cyan")
-                table.add_column("Total Patterns", style="yellow")
-                table.add_column("Malifiscan Patterns", style="magenta")
-                table.add_column("Other Patterns", style="blue")
-                
-                for repo_name, patterns in all_patterns.items():
-                    malifiscan_count = sum(1 for p in patterns if "# Malifiscan:" in p)
-                    other_count = len(patterns) - malifiscan_count
-                    table.add_row(
-                        repo_name,
-                        str(len(patterns)),
-                        str(malifiscan_count),
-                        str(other_count)
-                    )
-                
-                self.console.print(table)
-                
-                # Show detailed patterns if requested
-                show_details = len(all_patterns) == 1 or total_patterns < 20
-                
-                if show_details:
-                    for repo_name, patterns in all_patterns.items():
-                        if patterns:
-                            self.console.print(f"\n📦 Repository: {repo_name}")
-                            
-                            # Separate Malifiscan patterns from others
-                            malifiscan_patterns = [p for p in patterns if "# Malifiscan:" in p]
-                            other_patterns = [p for p in patterns if "# Malifiscan:" not in p]
-                            
-                            if malifiscan_patterns:
-                                self.console.print("🛡️  Malifiscan patterns:", style="bold magenta")
-                                for pattern in malifiscan_patterns:
-                                    self.console.print(f"   • {pattern}", style="magenta")
-                            
-                            if other_patterns:
-                                self.console.print("🔧 Other patterns:", style="bold blue")
-                                for pattern in other_patterns:
-                                    self.console.print(f"   • {pattern}", style="blue")
-                else:
-                    self.console.print(f"\n💡 Use 'registry list-blocked {ecosystem} --details' to see all patterns", style="dim")
-                
+            if not list_result["success"]:
+                error_msg = list_result.get("error", "Unknown error")
+                self.console.print(f"❌ Failed to list blocked packages: {error_msg}", style="red")
+                return False
+            
+            blocked_packages = list_result["blocked_packages"]
+            
+            if not blocked_packages:
+                self.console.print(f"✅ No exclusion patterns found for {ecosystem} ecosystem", style="green")
                 return True
+            
+            # Display results
+            self.console.print(f"\n🔍 Found {len(blocked_packages)} exclusion patterns:", style="cyan")
+            
+            table = Table()
+            table.add_column("Repository", style="cyan")
+            table.add_column("Pattern", style="magenta")
+            table.add_column("Type", style="yellow")
+            
+            for pattern_info in blocked_packages:
+                repo = pattern_info.get('repository', 'Unknown')
+                pattern = pattern_info.get('pattern', 'Unknown')
+                pattern_type = "Malifiscan" if "# Malifiscan:" in pattern else "Other"
                 
-            finally:
-                # Restore logging and cleanup
-                jfrog_logger.setLevel(original_level)
-                await registry.close()
-                
+                table.add_row(repo, pattern, pattern_type)
+            
+            self.console.print(table)
+            return True
+            
         except Exception as e:
             self.console.print(f"❌ Error listing blocked packages: {e}", style="red")
-            registry = self.services.get('registry')
-            if registry:
-                await registry.close()
             return False
 
     async def registry_unblock(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> bool:
@@ -736,55 +685,28 @@ class SecurityScannerCLI:
         try:
             self.console.print(f"✅ Unblocking package: {package_name} ({ecosystem}) version {version}")
             
-            registry = self.services.get('registry')
-            if not registry:
-                self.console.print("❌ Registry service not available", style="red")
+            if not self.app or not self.app.registry_management:
+                self.console.print("❌ Registry management not initialized", style="red")
                 return False
             
-            # Temporarily suppress verbose logging for cleaner CLI output
-            jfrog_logger = logging.getLogger('src.providers.registries.jfrog_registry')
-            original_level = jfrog_logger.level
-            jfrog_logger.setLevel(logging.WARNING)
+            # Use the registry management use case
+            unblock_result = await self.app.registry_management.unblock_package(package_name, ecosystem, version)
             
-            try:
-                # Create package object
-                package = MaliciousPackage(
-                    name=package_name,
-                    ecosystem=ecosystem,
-                    version=version if version != "*" else None,
-                    package_url=f"pkg:{ecosystem.lower()}/{package_name}",
-                    advisory_id="CLI-MANUAL-UNBLOCK",
-                    summary=f"Manually unblocked via CLI at {datetime.now()}",
-                    details="Package unblocked using CLI testing tool",
-                    aliases=[],
-                    affected_versions=[version] if version != "*" else [],
-                    database_specific={},
-                    published_at=None,
-                    modified_at=None
-                )
-                
-                # Unblock the package
-                unblocked_packages = await registry.unblock_packages([package])
-            finally:
-                # Restore original logging level
-                jfrog_logger.setLevel(original_level)
-            
-            if unblocked_packages:
-                self.console.print(f"✅ Successfully unblocked {package_name} ({ecosystem})", style="green")
-                self.console.print("📝 Exclusion patterns have been removed - package can now be downloaded", style="blue")
+            if unblock_result["success"]:
+                if unblock_result.get("was_blocked"):
+                    self.console.print(f"✅ {unblock_result['message']}", style="green")
+                    self.console.print("📝 Exclusion patterns have been removed - package can now be downloaded", style="blue")
+                else:
+                    self.console.print(f"ℹ️ {unblock_result['message']}", style="blue")
                 return True
             else:
-                self.console.print(f"⚠️  Package {package_name} was not blocked or could not be unblocked", style="yellow")
+                error_msg = unblock_result.get("error", "Unknown error")
+                self.console.print(f"❌ Failed to unblock {package_name}: {error_msg}", style="red")
                 return False
                 
         except Exception as e:
             self.console.print(f"❌ Error unblocking package: {e}", style="red")
             return False
-        finally:
-            # Ensure session is properly closed
-            registry = self.services.get('registry')
-            if registry:
-                await registry.close()
 
     async def fetch_feed_packages(self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48) -> bool:
         """Fetch fresh malicious packages from the packages feed."""
@@ -792,15 +714,15 @@ class SecurityScannerCLI:
             time_desc = f" (last {hours} hours)" if hours else ""
             self.console.print(f"🔄 Fetching fresh malicious packages from packages feed{time_desc}...")
             
-            if not self.app:
-                self.console.print("❌ Application not initialized", style="red")
+            if not self.app or not self.app.feed_management:
+                self.console.print("❌ Feed management not initialized", style="red")
                 return False
             
             with Progress() as progress:
                 task = progress.add_task("Fetching from packages feed...", total=100)
                 
-                # Use the core app for business logic
-                fetch_result = await self.app.fetch_packages_feed_data(ecosystem, limit, hours)
+                # Use the feed management use case
+                fetch_result = await self.app.feed_management.fetch_recent_packages(ecosystem, limit, hours)
                 progress.advance(task, 100)
             
             if not fetch_result["success"]:
@@ -809,7 +731,7 @@ class SecurityScannerCLI:
                 return False
             
             packages = fetch_result["packages"]
-            ecosystems = fetch_result["ecosystems"]
+            ecosystem_counts = fetch_result["ecosystem_counts"]
             
             if not packages:
                 filter_desc = f" for {ecosystem} ecosystem" if ecosystem else ""
@@ -818,13 +740,11 @@ class SecurityScannerCLI:
             
             # Show summary
             self.console.print(f"🎯 Found {len(packages)} malicious packages from packages feed")
-            for eco, count in ecosystems.items():
+            for eco, count in ecosystem_counts.items():
                 self.console.print(f"  • {eco}: {count} packages")
             
-            # Show most recent packages
-            recent_packages = packages[:limit]
-            
-            title = f"Fresh Malicious Packages from Feed (Showing {len(recent_packages)})"
+            # Show packages
+            title = f"Fresh Malicious Packages from Feed (Showing {len(packages)})"
             if ecosystem:
                 title += f" - {ecosystem.upper()} only"
                 
@@ -832,34 +752,24 @@ class SecurityScannerCLI:
             table.add_column("Name", style="cyan")
             table.add_column("Ecosystem", style="magenta") 
             table.add_column("Version", style="blue")
-            table.add_column("Severity", style="red")
             table.add_column("Advisory ID", style="yellow")
             table.add_column("Summary", style="white")
             
-            for pkg in recent_packages:
-                severity = "N/A"
-                if pkg.database_specific and isinstance(pkg.database_specific, dict):
-                    severity = pkg.database_specific.get('severity', 'N/A')
-                    
+            for pkg in packages:
+                summary = pkg.summary or pkg.details or "No description available"
+                # Truncate long summaries
+                if len(summary) > 50:
+                    summary = summary[:47] + "..."
+                
                 table.add_row(
                     pkg.name,
                     pkg.ecosystem,
                     pkg.version or "N/A",
-                    severity,
                     pkg.advisory_id,
-                    (pkg.summary[:35] + "...") if pkg.summary and len(pkg.summary) > 35 else pkg.summary or "N/A"
+                    summary
                 )
             
             self.console.print(table)
-            
-            # Ask if user wants to store these packages
-            if packages:
-                store = Confirm.ask(f"\n💾 Store these {len(packages)} packages in local storage?")
-                if store:
-                    storage = self.services['storage']
-                    await storage.store_malicious_packages(packages)
-                    self.console.print(f"✅ Stored {len(packages)} packages in local storage", style="green")
-            
             return True
             
         except Exception as e:
@@ -1026,6 +936,7 @@ Examples:
   python cli.py registry list-blocked npm
   python cli.py feed fetch --ecosystem npm --limit 50 --hours 24
   python cli.py scan crossref
+  python cli.py scan crossref --block --hours 24 --ecosystem npm
   python cli.py health check
         """
     )
@@ -1068,6 +979,7 @@ Examples:
     crossref_parser.add_argument("--ecosystem", default="npm", help="Package ecosystem (default: npm)")
     crossref_parser.add_argument("--limit", type=int, help="Maximum number of malicious packages to check (default: no limit)")
     crossref_parser.add_argument("--no-report", action="store_true", help="Skip saving scan report to storage")
+    crossref_parser.add_argument("--block", action="store_true", help="Block malicious packages from OSV feed before searching (default: false)")
     
     results_parser = scan_subparsers.add_parser("results", help="View scan results and findings")
     results_parser.add_argument("--scan-id", type=str, help="Show detailed results for specific scan ID")
@@ -1124,7 +1036,7 @@ Examples:
                 
         elif args.command == "scan":
             if args.scan_action == "crossref":
-                await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report)
+                await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report, args.block)
             elif args.scan_action == "results":
                 if args.scan_id:
                     await cli.scan_results_details(args.scan_id)

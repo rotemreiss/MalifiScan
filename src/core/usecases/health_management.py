@@ -25,7 +25,7 @@ class HealthManagementUseCase:
             Dictionary containing health status for each service
         """
         try:
-            self.logger.info("Checking service health...")
+            self.logger.debug("Checking service health...")
             
             health_results = {}
             
@@ -64,7 +64,7 @@ class HealthManagementUseCase:
                 "services": health_results
             }
             
-            self.logger.info(f"Health check complete: {healthy_count}/{total_count} services healthy")
+            self.logger.debug(f"Health check complete: {healthy_count}/{total_count} services healthy")
             return result
             
         except Exception as e:

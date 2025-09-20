@@ -25,6 +25,8 @@ class DummyRegistryService(PackagesRegistryService):
         return None
     def get_registry_name(self) -> str:
         return "dummy"
+    async def discover_repositories_by_ecosystem(self, ecosystem: str):
+        return ["dummy-repo"]
 
 @pytest.fixture
 def db_storage():
