@@ -200,7 +200,7 @@ uv run python cli.py health check
 uv run python cli.py scan crossref
 
 # Quick testing during development
-uv run pytest tests/ -m "not integration"        # Fast feedback loop
+uv run pytest tests/unit/ -m "not integration"        # Fast feedback loop
 uv run pytest tests/ -m integration              # Comprehensive testing
 
 # Install additional dev dependencies
@@ -226,7 +226,7 @@ python cli.py health check
 python cli.py scan crossref
 
 # Run tests
-pytest tests/ -m "not integration"  # Unit tests
+pytest tests/unit/ -m "not integration"  # Unit tests
 pytest tests/ -m integration       # Integration tests
 
 # Install additional dependencies
@@ -239,13 +239,13 @@ pip freeze > requirements.txt
 ## 🧪 Testing
 
 ### Overview
-The project uses co-located unit tests (next to source under `src/`) plus broader integration tests under `tests/integration/`. See below for database-specific strategy and execution examples.
+The project uses a **separated test structure** with unit tests in `tests/unit/` and integration tests in `tests/integration/`. This provides clear separation of concerns and faster feedback loops. See below for database-specific strategy and execution examples.
 
 ### Database (SQLite) Testing Best Practices
 
 | Layer | Location | Purpose | Scope |
 |-------|----------|---------|-------|
-| Unit  | `src/providers/storage/database_storage_test.py` | Validate ORM mapping & CRUD logic | Direct `DatabaseStorage` calls |
+| Unit  | `tests/unit/providers/test_database_storage.py` | Validate ORM mapping & CRUD logic | Direct `DatabaseStorage` calls |
 | Integration | `tests/integration/test_database_integration.py` | End-to-end flow through use cases | `ScanResultsManager` + real storage |
 
 Key practices:
@@ -290,39 +290,42 @@ Common CLI scan options used in tests and examples:
 - `--debug`: Enable verbose logging
 
 ### Adding New Tests
-1. Co-locate file: `*_test.py` next to implementation.
-2. Use descriptive test method names.
-3. Prefer real entities over bare mocks where feasible.
-4. Keep assertions focused—one behavior per test.
-5. Fail fast on unexpected side effects (e.g., extra DB rows).
+1. Create unit test file: `tests/unit/[category]/test_*.py` matching the source structure
+2. Use descriptive test method names
+3. Prefer real entities over bare mocks where feasible
+4. Keep assertions focused—one behavior per test
+5. Fail fast on unexpected side effects (e.g., extra DB rows)
+6. Add integration tests in `tests/integration/` for end-to-end workflows
 
 
 ### Running Tests
 
-We use a **co-located test structure** where tests are placed next to their source files with a `_test.py` suffix.
+We use a **separated test structure** where unit tests are organized in `tests/unit/` with subdirectories mirroring the `src/` structure, and integration tests are in `tests/integration/`.
 
 #### Using UV (Recommended for Development)
 
 ```bash
 # Direct UV commands
-uv run pytest tests/                              # All tests
-uv run pytest tests/ -m "not integration"        # Unit tests only
-uv run pytest tests/ -m integration              # Integration tests only
+uv run pytest tests/unit/                        # Unit tests only (fast feedback)
+uv run pytest tests/integration/                 # Integration tests only  
+uv run pytest tests/                             # All tests
+uv run pytest tests/ -m "not integration"       # All unit tests
+uv run pytest tests/ -m integration             # All integration tests
 
 # Run with coverage
-uv run pytest tests/ --cov=src --cov-report=html
+uv run pytest tests/unit/ --cov=src --cov-report=html
 
 # Run tests for a specific module
-uv run pytest src/core/usecases/security_scanner_test.py
+uv run pytest tests/unit/core/usecases/
+
+# Run specific test file
+uv run pytest tests/unit/core/test_entities.py
 
 # Run specific test method
-uv run pytest src/core/usecases/security_scanner_test.py::TestSecurityScanner::test_execute_scan_success
-
-# Run all tests in a directory
-uv run pytest src/core/entities/
+uv run pytest tests/unit/core/test_entities.py::TestMaliciousPackage::test_create_malicious_package
 
 # Check test coverage for use cases
-uv run pytest src/core/usecases/ --cov=src/core/usecases --cov-report=term-missing
+uv run pytest tests/unit/core/ --cov=src/core --cov-report=term-missing
 ```
 
 #### Using pip/venv (Traditional)
@@ -330,40 +333,43 @@ uv run pytest src/core/usecases/ --cov=src/core/usecases --cov-report=term-missi
 ```bash
 source venv/bin/activate  # Activate environment first
 
-# Run all tests (including co-located tests)
-pytest src/
+# Run unit tests (fast feedback loop)
+pytest tests/unit/
 
-# Run with coverage
-pytest src/ --cov=src --cov-report=html
-
-# Run only integration tests  
+# Run integration tests
 pytest tests/integration/
 
+# Run all tests
+pytest tests/
+
+# Run with coverage
+pytest tests/unit/ --cov=src --cov-report=html
+
 # Run tests for a specific module
-pytest src/core/usecases/security_scanner_test.py
+pytest tests/unit/core/usecases/
+
+# Run specific test file
+pytest tests/unit/core/test_entities.py
 
 # Run specific test method
-pytest src/core/usecases/security_scanner_test.py::TestSecurityScanner::test_execute_scan_success
-
-# Run all tests in a directory
-pytest src/core/entities/
+pytest tests/unit/core/test_entities.py::TestMaliciousPackage::test_create_malicious_package
 
 # Check test coverage for use cases
-pytest src/core/usecases/ --cov=src/core/usecases --cov-report=term-missing
+pytest tests/unit/core/ --cov=src/core --cov-report=term-missing
 ```
 
 ### Writing Tests
 
 When adding new functionality, create test files using these conventions:
 
-1. **File Naming**: Use `*_test.py` suffix (e.g., `my_module_test.py`)
-2. **Location**: Place test files in the same directory as the source code
-3. **Imports**: Use absolute imports from project root
+1. **File Naming**: Use `test_*.py` prefix (e.g., `test_my_module.py`)
+2. **Location**: Place unit tests in `tests/unit/` with subdirectories mirroring `src/` structure
+3. **Imports**: Use absolute imports from project root (`from src.module import Class`)
 4. **Fixtures**: Define module-specific fixtures in test files, global fixtures in `conftest.py`
 
 Example test file structure:
 ```python
-# src/core/usecases/my_usecase_test.py
+# tests/unit/core/usecases/test_my_usecase.py
 
 import pytest
 from unittest.mock import AsyncMock
@@ -389,6 +395,28 @@ class TestMyUseCase:
         """Test some operation."""
         # Test implementation
         pass
+```
+
+### Test Organization
+
+```
+tests/
+├── unit/                      # Unit tests (fast, isolated)
+│   ├── config/               # Configuration tests
+│   ├── core/                 # Business logic tests
+│   │   ├── entities/        # Entity tests
+│   │   ├── usecases/        # Use case tests  
+│   │   └── interfaces/      # Interface tests
+│   ├── providers/           # Provider implementation tests
+│   │   ├── feeds/          # Feed provider tests
+│   │   ├── registries/     # Registry provider tests
+│   │   ├── storage/        # Storage provider tests
+│   │   └── notifications/  # Notification provider tests
+│   └── factories/          # Factory tests
+└── integration/              # Integration tests (slower, end-to-end)
+    ├── test_cli_integration.py
+    ├── test_database_integration.py
+    └── test_scanner_integration.py
 ```
 
 ## 🗄️ Database Schema (ERD)
@@ -605,8 +633,8 @@ The application provides structured logging:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Write tests for new functionality (co-located `*_test.py` files)
-4. Ensure all tests pass (`pytest src/`)
+3. Write tests for new functionality (unit tests in `tests/unit/`, integration tests in `tests/integration/`)
+4. Ensure all tests pass (`pytest tests/`)
 5. Update documentation if needed
 6. Commit your changes (`git commit -m 'Add amazing feature'`)
 7. Push to the branch (`git push origin feature/amazing-feature`)
@@ -618,7 +646,7 @@ The application provides structured logging:
 - Write comprehensive docstrings
 - Add type hints where appropriate
 - Maintain test coverage above 90%
-- Use co-located test files with `*_test.py` naming convention
+- Use separated test structure with `tests/unit/` and `tests/integration/`
 - Update documentation for API changes
 
 See `STANDARDS.md` for detailed coding standards and testing guidelines.

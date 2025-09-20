@@ -217,8 +217,6 @@ LOG_FILE_PATH=logs/security_scanner.log
             Tuple of (success: bool, validation_results: List[Dict[str, str]])
         """
         try:
-            self.logger.info("Validating configuration...")
-            
             # Load configuration and check for issues
             config_loader = ConfigLoader(self.config_file, self.env_file, self.local_config_file)
             

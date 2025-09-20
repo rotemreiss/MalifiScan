@@ -321,75 +321,79 @@ async def command_handler(self, args) -> bool:
 
 ### Test Structure
 
-We use a **co-located test structure** where test files are placed directly next to their corresponding source files using the `_test.py` suffix:
+We use a **separated test structure** with unit tests organized in `tests/unit/` and integration tests in `tests/integration/`, providing clear separation of concerns and faster feedback loops:
 
 ```
-src/
-├── config/
-│   ├── config_loader.py
-│   └── config_test.py          # Tests for config_loader.py
-├── core/
-│   ├── entities/
-│   │   ├── malicious_package.py
-│   │   ├── scan_result.py
-│   │   └── entities_test.py    # Tests for all entity classes
-│   └── usecases/
-│       ├── security_scanner.py
-│       ├── security_scanner_test.py  # Tests for SecurityScanner
-│       ├── data_management.py
-│       └── data_management_test.py   # Tests for DataManagementUseCase
-└── providers/
-    ├── feeds/
-    │   ├── osv_feed.py
-    │   └── osv_feed_test.py      # Tests for OSV feed implementation
-    └── registries/
-        ├── jfrog_registry.py
-        └── jfrog_registry_test.py # Tests for JFrog registry
-
 tests/
-├── integration/            # Integration tests with external dependencies
+├── unit/                      # Unit tests (fast, isolated)
+│   ├── config/               # Configuration tests
+│   │   ├── test_config_loader.py
+│   │   └── test_config.py
+│   ├── core/                 # Business logic tests
+│   │   ├── entities/
+│   │   │   └── test_entities.py      # Tests for all entity classes
+│   │   ├── usecases/
+│   │   │   ├── test_security_scanner.py
+│   │   │   └── test_data_management.py
+│   │   └── interfaces/
+│   │       └── test_interfaces.py
+│   ├── providers/            # Provider implementation tests
+│   │   ├── feeds/
+│   │   │   └── test_osv_feed.py
+│   │   ├── registries/
+│   │   │   └── test_jfrog_registry.py
+│   │   ├── storage/
+│   │   │   ├── test_database_storage.py
+│   │   │   └── test_memory_storage.py
+│   │   └── notifications/
+│   │       └── test_notifications.py
+│   └── factories/
+│       └── test_service_factory.py
+├── integration/              # Integration tests with external dependencies
 │   ├── test_jfrog_integration.py
-│   └── test_complete_scan.py
-└── fixtures/              # Shared test data and utilities
+│   ├── test_osv_integration.py
+│   ├── test_cli_integration.py
+│   └── test_scanner_integration.py
+└── fixtures/                 # Shared test data and utilities
     ├── osv_response.json
     └── mock_servers.py
 
-conftest.py                 # Global test configuration and fixtures
+conftest.py                   # Global test configuration and fixtures
 ```
 
 ### Test Organization Benefits
 
-- **Discoverability**: Tests are easy to find next to their source code
-- **Maintainability**: Changes to source code immediately highlight related tests
-- **Locality**: Reduces cognitive load when working on a specific module
-- **Import Simplicity**: Test files can use relative imports or short absolute paths
+- **Performance**: Fast unit tests in `tests/unit/` enable quick feedback loops during development
+- **Isolation**: Clear separation between unit tests (mocked dependencies) and integration tests (real services)
+- **Maintainability**: Organized structure mirrors source code for easy navigation
+- **CI/CD**: Unit tests can run quickly in CI, integration tests can be run separately
+- **Discoverability**: Tests are logically grouped by functionality and layer
 
-### Co-located Test Conventions
+### Separated Test Conventions
 
 #### File Naming
-- Test files must use the `_test.py` suffix (e.g., `security_scanner_test.py`)
-- Test files should be placed in the same directory as the source file they test
-- For modules with multiple classes, group related tests in one `*_test.py` file
+- Test files must use the `test_*.py` prefix (e.g., `test_security_scanner.py`)
+- Test files should be organized in `tests/unit/` with subdirectories mirroring `src/` structure
+- Integration tests use `test_*_integration.py` naming pattern in `tests/integration/`
 
 #### Import Guidelines
 Use absolute imports from the project root for consistency:
 
 ```python
-# ✅ Preferred: Absolute imports
+# ✅ Correct: Absolute imports from project root
 from src.core.usecases.security_scanner import SecurityScanner
 from src.core.entities import MaliciousPackage, ScanResult
 
-# ✅ Alternative: Relative imports for same directory
-from .security_scanner import SecurityScanner
-
-# ❌ Avoid: Mixed import styles within same file
+# ❌ Avoid: Relative imports
+from ...core.usecases.security_scanner import SecurityScanner
 ```
 
 #### Test Discovery
 - `conftest.py` should be placed at the project root for global fixtures
 - Module-specific fixtures can be defined within each test file
-- Use `pytest src/` to run all co-located tests
-- Use `pytest src/path/to/specific_test.py` for individual test files
+- Use `pytest tests/unit/` to run fast unit tests only
+- Use `pytest tests/integration/` to run integration tests only
+- Use `pytest tests/` to run all tests
 
 ### Unit Test Guidelines
 
@@ -398,7 +402,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime
 
-# Co-located test imports
+# Unit test imports with absolute paths
 from src.core.usecases.security_scanner import SecurityScanner
 from src.core.entities import MaliciousPackage, ScanResult, ScanStatus
 
@@ -666,13 +670,16 @@ def test_cli_package_scanning(self, cli_path):
 Integration tests require special configuration management:
 
 ```python
-# Environment variable to skip integration tests
-SKIP_INTEGRATION_TESTS=true pytest tests/
+# Run only unit tests (fast feedback)
+pytest tests/unit/
 
-# Run only integration tests
-pytest -m integration tests/integration/
+# Run only integration tests  
+pytest tests/integration/
 
-# Exclude integration tests (default for CI)
+# Run all tests
+pytest tests/
+
+# Exclude integration tests (for CI)
 pytest -m "not integration" tests/
 ```
 

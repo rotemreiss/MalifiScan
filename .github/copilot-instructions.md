@@ -12,17 +12,19 @@
 - Use [UV](https://github.com/astral-sh/uv) for dependency management and running commands (recommended):
   - `uv sync --dev` to install all dependencies
   - `uv run python cli.py health check` to verify setup
-  - `uv run pytest tests/ -m "not integration"` for unit tests
+  - `uv run pytest tests/unit/` for unit tests (fast feedback loop)
   - `uv run pytest tests/ -m integration` for integration tests
+  - `uv run pytest tests/ -m "not integration"` for all unit tests
 - Traditional pip/venv is supported; see `CONTRIBUTING.md` for details.
 - Make CLI executable: `chmod +x cli.py`
 
 ## 🧪 Testing Conventions
-- **Co-located tests**: Place `*_test.py` files next to their source (see `src/` subfolders).
-- **Integration tests**: Located in `tests/integration/`, must use `@pytest.mark.integration`.
-- Use real entities and avoid excessive mocking; prefer interface-based testing.
-- Coverage: Minimum 90% line coverage required (`pytest --cov=src --cov-fail-under=90`).
-- Use `conftest.py` for shared fixtures.
+- **Separated test structure**: Unit tests in `tests/unit/` with clean directory structure mirroring `src/`
+- **Integration tests**: Located in `tests/integration/`, must use `@pytest.mark.integration`
+- **Import pattern**: Use absolute imports from project root (`from src.module import Class`)
+- Use real entities and avoid excessive mocking; prefer interface-based testing
+- Coverage: Minimum 90% line coverage required (`pytest --cov=src --cov-fail-under=90`)
+- Use `conftest.py` for shared fixtures
 
 ## 📦 Configuration & Storage
 - Main config: `config.yaml` (controls provider types, storage, scheduler, etc.)
@@ -49,7 +51,7 @@
   2. Add provider in `src/providers/[category]/`
   3. Register in `src/factories/service_factory.py`
   4. Update `config.yaml` schema
-  5. Add co-located unit test and integration test
+  5. Add unit test in `tests/unit/[category]/` and integration test in `tests/integration/`
 
 ## 🚫 Prohibited AI Actions
 - Do NOT break Clean Architecture boundaries
@@ -95,7 +97,7 @@ async def config_validate(self) -> bool:
 1. Create or update appropriate use case in `src/core/usecases/`
 2. CLI method should only parse args, call use case, display results
 3. All file operations, validation, configuration logic goes in use case
-4. Add co-located tests for the use case, not just CLI integration tests
+4. Add unit tests for the use case in `tests/unit/core/`, integration tests in `tests/integration/`
 
 ## ✅ AI Enhancement Guidelines
 - Prefer improving test coverage, error messages, logging, and configuration flexibility
@@ -106,7 +108,7 @@ async def config_validate(self) -> bool:
 - See `STANDARDS.md` for coding/test standards
 - See `CONTRIBUTING.md` for architecture, workflow, and database details
 - See `src/core/interfaces/` and `src/factories/` for extension patterns
-- See `tests/integration/` for integration test structure
+- See `tests/unit/` for unit test structure and `tests/integration/` for integration test structure
 
 ---
 _Last updated: 2025-09-20_
