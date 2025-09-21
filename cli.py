@@ -827,10 +827,14 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error during health check: {e}", style="red")
             return False
 
-    async def notifications_check(self) -> bool:
-        """Test notification functionality by sending a dummy notification."""
+    async def notifications_check(self, malicious: bool = False) -> bool:
+        """Test notification functionality by sending a test notification."""
         try:
             self.console.print("🔔 Testing Notification Service", style="bold cyan")
+            
+            if malicious:
+                self.console.print("🚨 Testing with malicious package payload", style="yellow")
+            
             self.console.print()
             
             if not self.app:
@@ -843,70 +847,50 @@ class SecurityScannerCLI:
                 self.console.print("❌ Notification service not available", style="red")
                 return False
             
-            # Check notification service health first
-            self.console.print("Checking notification service health...", style="yellow")
-            is_healthy = await notification_service.health_check()
+            # Use the notification testing use case
+            from src.core.usecases.notification_testing import NotificationTestingUseCase
+            notification_testing = NotificationTestingUseCase(notification_service)
             
-            if not is_healthy:
+            # Run notification test
+            test_result = await notification_testing.test_notification_service(include_malicious=malicious)
+            
+            # Display results
+            if not test_result.get("healthy", False):
                 self.console.print("❌ Notification service health check failed", style="red")
                 self.console.print("💡 Ensure your notification service is properly configured:", style="yellow")
+                self.console.print("  • For webhook: Set WEBHOOK_URL environment variable", style="dim")
                 self.console.print("  • For MS Teams: Set MSTEAMS_WEBHOOK_URL environment variable", style="dim")
                 self.console.print("  • Verify webhook URL is accessible", style="dim")
                 return False
             
             self.console.print("✅ Notification service is healthy", style="green")
             
-            # Create a test notification event
-            from datetime import datetime, timezone
-            import uuid
-            from src.core.entities import NotificationEvent, NotificationLevel, NotificationChannel, ScanResult, ScanStatus, MaliciousPackage
-            
-            # Create a mock scan result for testing
-            test_scan_result = ScanResult(
-                scan_id=str(uuid.uuid4()),
-                timestamp=datetime.now(timezone.utc),
-                status=ScanStatus.SUCCESS,
-                packages_scanned=5,
-                malicious_packages_found=[],
-                packages_blocked=[],
-                malicious_packages_list=[],
-                errors=[],
-                execution_duration_seconds=1.5
-            )
-            
-            # Create test notification
-            test_event = NotificationEvent(
-                event_id=f"test-{uuid.uuid4()}",
-                timestamp=datetime.now(timezone.utc),
-                level=NotificationLevel.INFO,
-                title="🧪 Malifiscan Notification Test",
-                message="This is a test notification to verify that the notification system is working correctly. If you receive this message, your notification configuration is properly set up.",
-                scan_result=test_scan_result,
-                affected_packages=[],
-                recommended_actions=["Verify notification received", "Update notification settings if needed"],
-                channels=[NotificationChannel.WEBHOOK],
-                metadata={
-                    "test": True,
-                    "source": "malifiscan_cli",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
-            
-            # Send test notification
-            self.console.print("Sending test notification...", style="yellow")
-            success = await notification_service.send_notification(test_event)
-            
-            if success:
-                self.console.print("✅ Test notification sent successfully!", style="green")
+            # Display test notification result
+            if test_result.get("notification_sent"):
+                test_type = test_result.get("test_type", "basic")
+                if test_type == "malicious_package":
+                    self.console.print(f"✅ Malicious package test notification sent successfully!", style="green")
+                    self.console.print(f"   Package: mal-test-pack@9.9.9", style="dim")
+                    self.console.print(f"   Affected packages: {test_result.get('affected_packages_count', 0)}", style="dim")
+                else:
+                    self.console.print("✅ Test notification sent successfully!", style="green")
+                
                 self.console.print("Check your notification channel to confirm receipt.", style="dim")
+                
+                if malicious:
+                    self.console.print("\n💡 The malicious package notification simulates a real security alert", style="yellow")
+                    self.console.print("   with comprehensive package details and critical severity level.", style="dim")
+                
                 return True
             else:
                 self.console.print("❌ Failed to send test notification", style="red")
+                if "error" in test_result:
+                    self.console.print(f"   Error: {test_result['error']}", style="dim")
                 return False
                 
         except Exception as e:
             self.console.print(f"❌ Error testing notifications: {e}", style="red")
-            logger.exception("Error in notifications test")
+            logging.getLogger(__name__).exception("Error in notifications test")
             return False
 
     async def run_manual_scan(self) -> bool:
@@ -1233,7 +1217,10 @@ Examples:
     # Notifications
     notifications_parser = subparsers.add_parser("notifications", help="Notification service operations")
     notifications_subparsers = notifications_parser.add_subparsers(dest="notifications_action")
-    notifications_subparsers.add_parser("check", help="Test notification functionality")
+    
+    notifications_check_parser = notifications_subparsers.add_parser("check", help="Test notification functionality")
+    notifications_check_parser.add_argument("--malicious", action="store_true", 
+                                           help="Test with malicious package payload (uses mal-test-pack@9.9.9)")
     
     # Test data
     test_parser = subparsers.add_parser("test", help="Test data operations")
@@ -1292,7 +1279,7 @@ Examples:
                 
         elif args.command == "notifications":
             if args.notifications_action == "check":
-                await cli.notifications_check()
+                await cli.notifications_check(args.malicious)
                 
         elif args.command == "test":
             if args.test_action == "create":

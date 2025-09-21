@@ -90,12 +90,13 @@ class TestMSTeamsNotifier:
             assert result is True
             mock_post.assert_called_once()
             
-            # Verify the test payload structure (Power Automate format)
+            # Verify the test payload structure (standardized format for health check)
             call_args = mock_post.call_args
             payload = call_args[1]['json']
-            assert payload['title'] == '🔍 Malifiscan Health Check'
-            assert payload['urgency'] == 'Normal'
-            assert payload['summary'] == 'Health Check'
+            assert isinstance(payload, dict)
+            assert 'title' in payload
+            assert '🧪 MS Teams Health Check' in payload['title']
+            assert payload['level'] == 'info'
     
     @pytest.mark.asyncio
     async def test_health_check_failure(self):
@@ -154,7 +155,6 @@ class TestMSTeamsNotifier:
             message="Test message",
             scan_result=scan_result,
             affected_packages=[],
-            recommended_actions=["Test action"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
@@ -197,7 +197,6 @@ class TestMSTeamsNotifier:
             message="Test message",
             scan_result=scan_result,
             affected_packages=[],
-            recommended_actions=["Test action"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
@@ -240,7 +239,6 @@ class TestMSTeamsNotifier:
             message="Test message",
             scan_result=scan_result,
             affected_packages=[],
-            recommended_actions=["Test action"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
@@ -285,7 +283,6 @@ class TestMSTeamsNotifier:
             message="Test message",
             scan_result=scan_result,
             affected_packages=[],
-            recommended_actions=["Test action"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
@@ -338,24 +335,25 @@ class TestMSTeamsNotifier:
             message="Malicious package detected",
             scan_result=scan_result,
             affected_packages=[malicious_pkg],
-            recommended_actions=["Block package", "Investigate usage"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
         
         payload = notifier._create_teams_payload(event)
         
-        # Verify basic structure (Power Automate format)
+        # Verify standardized payload structure
         assert payload["title"] == "🚨 Critical Security Alert"
-        assert payload["text"] == "Malicious package detected"
-        assert payload["urgency"] == "Urgent"  # Critical level maps to Urgent
+        assert payload["message"] == "Malicious package detected"
+        assert payload["level"] == "critical"
         
-        # Verify key fields
-        assert payload["scan_id"] == scan_result.scan_id
-        assert payload["critical_packages_found"] == 1
-        assert payload["packages_scanned"] == 10  # Updated to match test data
-        assert "test-package" in payload["details"]  # Updated to match test data
-        assert "Block package" in payload["details"]
+        # Verify scan result information
+        assert payload["scan_result"]["scan_id"] == scan_result.scan_id
+        assert payload["scan_result"]["malicious_packages_found"] == 1
+        assert payload["scan_result"]["packages_scanned"] == 10
+        
+        # Verify affected packages information
+        assert len(payload["affected_packages"]) == 1
+        assert payload["affected_packages"][0]["name"] == "test-package"
     
     def test_create_teams_payload_info_notification(self):
         """Test Teams payload creation for info notification."""
@@ -382,21 +380,19 @@ class TestMSTeamsNotifier:
             message="No threats detected",
             scan_result=scan_result,
             affected_packages=[],
-            recommended_actions=["Continue monitoring"],
             channels=[NotificationChannel.WEBHOOK],
             metadata={"test": True}
         )
         
         payload = notifier._create_teams_payload(event)
         
-        # Verify basic structure (Power Automate format)
+        # Verify standardized payload structure
         assert payload["title"] == "✅ Scan Complete"
-        assert payload["urgency"] == "Normal"  # Info level maps to Normal
+        assert payload["level"] == "info"
         
-        # Verify no critical packages in payload
-        assert payload["critical_packages_found"] == 0
-        assert "Critical Packages Found" not in payload["details"]
-        assert "Affected Packages" not in payload["details"]
+        # Verify no affected packages in payload
+        assert payload["scan_result"]["malicious_packages_found"] == 0
+        assert len(payload.get("affected_packages", [])) == 0
     
     def test_str_representation(self):
         """Test string representation of the notifier."""

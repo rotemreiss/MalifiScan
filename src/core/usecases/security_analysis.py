@@ -470,8 +470,24 @@ class SecurityAnalysisUseCase:
                 }
             )
             
+            # Add registry information to the notification event
+            # Since NotificationEvent is frozen, we need to create a new one with registry info
+            event_with_registry = NotificationEvent(
+                event_id=event.event_id,
+                timestamp=event.timestamp,
+                level=event.level,
+                title=event.title,
+                message=event.message,
+                scan_result=event.scan_result,
+                affected_packages=event.affected_packages,
+                channels=event.channels,
+                metadata=event.metadata,
+                registry_type=getattr(self.registry_service, 'registry_type', 'unknown'),
+                registry_url=getattr(self.registry_service, 'base_url', None)
+            )
+            
             # Send notification
-            success = await self.notification_service.send_notification(event)
+            success = await self.notification_service.send_notification(event_with_registry)
             
             if success:
                 self.logger.info(f"Successfully sent critical security notification for scan {scan_id}")

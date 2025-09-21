@@ -172,7 +172,10 @@ class TestNotificationEvent:
         assert "New Malicious Package" in event.title
         assert len(event.affected_packages) == 1
         assert NotificationChannel.SLACK in event.channels
-        assert "Review blocked packages" in event.recommended_actions[0]
+        # recommended_actions field was removed - check that payload includes scan details instead
+        payload = event.to_standard_payload()
+        assert "scan_result" in payload
+        assert payload["scan_result"]["status"] == "success"
     
     def test_create_threat_notification_no_new_threats(self, sample_malicious_package):
         """Test creating notification with no new threats."""
@@ -180,7 +183,7 @@ class TestNotificationEvent:
             scan_id="test-scan",
             timestamp=datetime(2023, 1, 1),
             status=ScanStatus.SUCCESS,
-            packages_scanned=100,
+            packages_scanned=0,  # Fixed: no packages scanned to match "no threats" scenario
             malicious_packages_found=[sample_malicious_package],
             packages_blocked=[],
             malicious_packages_list=[sample_malicious_package],
@@ -197,4 +200,7 @@ class TestNotificationEvent:
         assert event.level == NotificationLevel.INFO
         assert "No New Threats" in event.title
         assert len(event.affected_packages) == 0
-        assert "Continue monitoring" in event.recommended_actions[0]
+        # recommended_actions field was removed - check that payload includes useful information instead
+        payload = event.to_standard_payload()
+        assert "scan_result" in payload
+        assert payload["scan_result"]["packages_scanned"] == 0

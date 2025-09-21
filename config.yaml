@@ -40,16 +40,24 @@ packages_registry:
 
 # Notification Service Configuration
 notification_service:
-  type: "null"  # Options: null, msteams, composite (for future implementations)
+  type: "null"  # Options: null, msteams, webhook, composite (for future implementations)
   enabled: false  # Disabled by default - enable when you have configured notification providers
   channels: []
   config:
     timeout_seconds: 30
     max_retries: 3
     retry_delay: 1.0
+    
     # MS Teams webhook configuration (when type: msteams)
     # webhook_url can be set here or via MSTEAMS_WEBHOOK_URL environment variable
     # webhook_url: "https://outlook.office365.com/webhook/your-webhook-url"
+    
+    # Generic webhook configuration (when type: webhook)
+    # webhook_url can be set here or via WEBHOOK_URL environment variable
+    # webhook_url: "https://webhook.com/WEBHOOK"
+    # custom_headers:
+    #   Authorization: "Bearer YOUR_TOKEN"
+    #   X-Custom-Header: "value"
 
 # Storage Service Configuration
 storage_service:

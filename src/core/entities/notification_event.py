@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from .malicious_package import MaliciousPackage
 from .scan_result import ScanResult
@@ -34,9 +34,10 @@ class NotificationEvent:
     message: str
     scan_result: ScanResult
     affected_packages: List[MaliciousPackage]
-    recommended_actions: List[str]
     channels: List[NotificationChannel]
     metadata: dict
+    registry_type: Optional[str] = None
+    registry_url: Optional[str] = None
     
     @classmethod
     def create_threat_notification(
@@ -60,12 +61,6 @@ class NotificationEvent:
                 f"Security scan detected {len(new_threats)} new malicious package(s) "
                 f"and blocked them in the registry. Immediate attention required."
             )
-            actions = [
-                "Review blocked packages in the registry",
-                "Investigate if any of these packages were previously downloaded",
-                "Update security policies if needed",
-                "Monitor for additional related threats"
-            ]
         else:
             title = "✅ Security Scan Completed - No New Threats"
             message = (
@@ -73,7 +68,6 @@ class NotificationEvent:
                 f"Scanned {scan_result.packages_scanned} packages. "
                 f"No new threats detected."
             )
-            actions = ["Continue monitoring"]
         
         return cls(
             event_id=event_id,
@@ -83,7 +77,56 @@ class NotificationEvent:
             message=message,
             scan_result=scan_result,
             affected_packages=new_threats,
-            recommended_actions=actions,
             channels=channels,
             metadata=metadata or {}
         )
+    
+    def to_standard_payload(self) -> Dict[str, Any]:
+        """Convert notification event to standardized payload format for all providers."""
+        payload = {
+            "title": self.title,
+            "message": self.message,
+            "level": self.level.value,
+            "timestamp": self.timestamp.isoformat(),
+            "event_id": self.event_id
+        }
+        
+        # Add scan result information
+        if self.scan_result:
+            payload["scan_result"] = {
+                "scan_id": self.scan_result.scan_id,
+                "status": self.scan_result.status.value,
+                "packages_scanned": self.scan_result.packages_scanned,
+                "malicious_packages_found": len(self.affected_packages or []),
+                "errors": [str(error) for error in (self.scan_result.errors or [])],
+                "execution_duration_seconds": self.scan_result.execution_duration_seconds
+            }
+        
+        # Add registry information
+        if self.registry_type or self.registry_url:
+            payload["registry"] = {}
+            if self.registry_type:
+                payload["registry"]["type"] = self.registry_type
+            if self.registry_url:
+                payload["registry"]["url"] = self.registry_url
+        
+        # Add affected packages details
+        if self.affected_packages:
+            payload["affected_packages"] = []
+            for pkg in self.affected_packages:
+                package_data = {
+                    "name": pkg.name,
+                    "version": pkg.version,
+                    "ecosystem": pkg.ecosystem,
+                    "package_url": pkg.package_url,
+                    "advisory_id": pkg.advisory_id,
+                    "summary": pkg.summary,
+                    "severity": pkg.database_specific.get("severity", "UNKNOWN") if pkg.database_specific else "UNKNOWN",
+                    "published_at": pkg.published_at.isoformat() if pkg.published_at else None,
+                    "affected_versions": pkg.affected_versions or []
+                }
+                if pkg.aliases:
+                    package_data["aliases"] = pkg.aliases
+                payload["affected_packages"].append(package_data)
+        
+        return payload

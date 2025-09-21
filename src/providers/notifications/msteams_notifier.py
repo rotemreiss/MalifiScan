@@ -128,9 +128,39 @@ class MSTeamsNotifier(NotificationService):
         logger.debug("Performing MS Teams webhook health check")
         
         try:
-            # Try the most basic payload - just a string value
-            # Many Power Automate workflows expect this simple format
-            test_payload = "🔍 Malifiscan Health Check - This is a test message to verify MS Teams Power Automate webhook connectivity."
+            # Create test notification event using standardized format
+            from src.core.entities.scan_result import ScanResult, ScanStatus
+            from src.core.entities.notification_event import NotificationEvent, NotificationLevel, NotificationChannel
+            from datetime import datetime, timezone
+            import uuid
+            
+            test_scan_result = ScanResult(
+                scan_id=str(uuid.uuid4()),
+                timestamp=datetime.now(timezone.utc),
+                status=ScanStatus.SUCCESS,
+                packages_scanned=5,
+                malicious_packages_found=[],
+                packages_blocked=[],
+                malicious_packages_list=[],
+                errors=[],
+                execution_duration_seconds=1.2
+            )
+            
+            test_event = NotificationEvent(
+                event_id=f"health-{uuid.uuid4()}",
+                timestamp=datetime.now(timezone.utc),
+                level=NotificationLevel.INFO,
+                title="🧪 MS Teams Health Check",
+                message="Testing MS Teams notification connectivity",
+                scan_result=test_scan_result,
+                affected_packages=[],
+                channels=[NotificationChannel.WEBHOOK],
+                metadata={"test": True},
+                registry_type="health_check",
+                registry_url="health://msteams-connectivity-test"
+            )
+            
+            test_payload = self._create_teams_payload(test_event)
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout_seconds)) as session:
                 async with session.post(
@@ -156,68 +186,16 @@ class MSTeamsNotifier(NotificationService):
     
     def _create_teams_payload(self, event: NotificationEvent) -> Dict[str, Any]:
         """
-        Create Power Automate workflow payload from notification event.
+        Create standardized Teams payload using Power Automate format.
         
         Args:
             event: Notification event to convert
             
         Returns:
-            Dictionary representing Power Automate payload
+            Dictionary representing standardized payload for Power Automate
         """
-        # Determine color/urgency based on notification level
-        urgency_map = {
-            NotificationLevel.INFO: "Normal",
-            NotificationLevel.WARNING: "Important", 
-            NotificationLevel.CRITICAL: "Urgent"
-        }
-        
-        urgency = urgency_map.get(event.level, "Normal")
-        
-        # Build details text
-        details_lines = [
-            f"**Scan ID:** {event.scan_result.scan_id}",
-            f"**Timestamp:** {event.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            f"**Packages Scanned:** {event.scan_result.packages_scanned}",
-            f"**Status:** {event.scan_result.status.value.upper()}"
-        ]
-        
-        # Add critical package details if present
-        if event.affected_packages:
-            details_lines.append(f"**Critical Packages Found:** {len(event.affected_packages)}")
-            
-            # Show up to 5 package names
-            package_names = [pkg.name for pkg in event.affected_packages[:5]]
-            if len(event.affected_packages) > 5:
-                package_names.append(f"... and {len(event.affected_packages) - 5} more")
-            
-            details_lines.append(f"**Affected Packages:** {', '.join(package_names)}")
-        
-        # Add execution time
-        if hasattr(event.scan_result, 'execution_duration_seconds'):
-            details_lines.append(f"**Execution Time:** {event.scan_result.execution_duration_seconds:.1f}s")
-        
-        # Add recommended actions
-        if event.recommended_actions:
-            details_lines.append("\n**Recommended Actions:**")
-            for action in event.recommended_actions:
-                details_lines.append(f"• {action}")
-        
-        details_text = "\n".join(details_lines)
-        
-        # Create Power Automate payload
-        payload = {
-            "title": event.title,
-            "text": event.message,
-            "details": details_text,
-            "urgency": urgency,
-            "summary": f"Security scan completed with {event.scan_result.status.value} status",
-            "scan_id": event.scan_result.scan_id,
-            "packages_scanned": event.scan_result.packages_scanned,
-            "critical_packages_found": len(event.affected_packages) if event.affected_packages else 0,
-            "timestamp": event.timestamp.isoformat()
-        }
-        
-        return payload
+        # Use the standardized payload method from NotificationEvent
+        return event.to_standard_payload()
     
     async def _send_with_retries(self, payload: Dict[str, Any]) -> bool:
         """
