@@ -10,6 +10,38 @@ A security tool that detects malicious packages from external vulnerability feed
   <img src="art/demo.gif" alt="Malifiscan In-Action"/>
 </div>
 
+## Table of Contents
+
+- [Features](#️-features)
+- [Package Blocking & Security](#-package-blocking--security)
+  - [How Exclusion Patterns Work](#how-exclusion-patterns-work)
+  - [Blocking Commands](#blocking-commands)
+  - [Safety Features](#safety-features)
+- [Quick Start](#-quick-start)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+    - [Option 1: Using UV (Recommended)](#option-1-using-uv-recommended)
+    - [Option 2: Using pip (Traditional)](#option-2-using-pip-traditional)
+    - [Option 3: Using Docker](#option-3-using-docker)
+- [Usage](#-usage)
+  - [Core CLI Commands](#core-cli-commands)
+  - [Comprehensive CLI (cli.py)](#comprehensive-cli-clipy)
+  - [Simplified Entry Point (python -m src.main)](#simplified-entry-point-python--m-srcmain)
+  - [Interactive Mode](#interactive-mode)
+  - [Cron Usage](#cron-usage)
+- [Testing](#-testing)
+- [Configuration](#-configuration)
+  - [Quick Start Configuration](#quick-start-configuration)
+  - [Configuration Layers (Priority Order)](#configuration-layers-priority-order)
+  - [Configuration Files](#configuration-files)
+- [Notifications](#-notifications)
+- [Sample Output](#-sample-output)
+- [Performance Considerations](#-performance-considerations)
+- [Security Notes](#-security-notes)
+- [Documentation](#-documentation)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
+
 ## 🛡️ Features
 
 - **OSV Feed Integration**: Fetches malicious package data from Google Cloud Storage OSV vulnerability database
@@ -17,6 +49,7 @@ A security tool that detects malicious packages from external vulnerability feed
 - **Security Cross-Reference**: Compares OSV malicious packages against your JFrog repositories to identify potential threats
 - **Package Blocking**: Block malicious packages using JFrog Artifactory exclusion patterns to prevent downloads
 - **Package Management**: View, block, and unblock packages with enterprise-grade safety features
+- **Notifications & Alerts**: Configurable notifications via webhook, or Microsoft Teams when malicious packages are detected
 - **Time-Based Filtering**: Configurable time window for fetching recent malicious packages (default: 48 hours)
 - **Rich CLI Interface**: Interactive command-line interface with progress bars and formatted output
 - **Comprehensive Health Checks**: Validates connectivity to OSV and JFrog services
@@ -370,7 +403,21 @@ storage_service:
   enabled: true
 ```
 
-## � Sample Output
+## 📢 Notifications
+
+Malifiscan supports configurable notifications to alert your team when malicious packages are detected. Test your notification configuration with built-in testing commands that support both basic connectivity checks and realistic malicious package simulations.
+
+```bash
+# Test basic notification functionality
+uv run python cli.py notifications check
+
+# Test with realistic malicious package payload  
+uv run python cli.py notifications check --malicious
+```
+
+Configure webhook, or Microsoft Teams integration through the notification service settings in your configuration files.
+
+## 📊 Sample Output
 
 **Security Cross-Reference Scan:**
 ```
