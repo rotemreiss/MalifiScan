@@ -128,17 +128,15 @@ class SecurityScannerCLI:
                     'blocking package',
                     'successfully blocked',
                     'failed to block',
-                    'blocking packages in batch'
+                    'blocking packages in batch',
+                    'critical match found'  # Suppress "Critical match found" warnings during CLI operations
                 ]
                 
-                # Allow error and warning messages through
-                if record.levelno >= logging.WARNING:
-                    return True
-                
-                # Suppress INFO messages that match our patterns
-                if record.levelno == logging.INFO:
-                    for pattern in suppress_patterns:
-                        if pattern in message:
+                # Check if this is a message we want to suppress
+                for pattern in suppress_patterns:
+                    if pattern in message:
+                        # Suppress INFO and WARNING messages that match our patterns
+                        if record.levelno in (logging.INFO, logging.WARNING):
                             return False
                 
                 return True
@@ -151,7 +149,7 @@ class SecurityScannerCLI:
         """Get the display name of the current registry."""
         try:
             if self.services and 'registry' in self.services:
-                return await self.services['registry'].get_registry_name()
+                return self.services['registry'].get_registry_name()  # Remove await - this is a sync method
             return "Package Registry"  # Fallback
         except Exception:
             return "Package Registry"  # Fallback on error
