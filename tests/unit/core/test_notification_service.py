@@ -75,7 +75,6 @@ class TestNotificationServiceInterface:
             message="Found malicious package: malicious-pkg@1.0.0",
             scan_result=sample_scan_result,
             affected_packages=[],
-            recommended_actions=["Block package", "Review dependencies"],
             channels=[NotificationChannel.EMAIL],
             metadata={"package": "malicious-pkg", "version": "1.0.0"}
         )
@@ -142,7 +141,6 @@ class TestNotificationServiceInterface:
                 message=f"Test message {i}",
                 scan_result=sample_scan_result,
                 affected_packages=[],
-                recommended_actions=[],
                 channels=[NotificationChannel.SLACK],
                 metadata={"test": True}
             )
@@ -203,7 +201,6 @@ class TestNotificationServiceInterface:
                 message=f"Test {level.value} message",
                 scan_result=sample_scan_result,
                 affected_packages=[],
-                recommended_actions=[],
                 channels=[NotificationChannel.EMAIL],
                 metadata={"level": level.value}
             )
@@ -236,7 +233,6 @@ class TestNotificationServiceInterface:
                 message=f"Test message for channels: {channels}",
                 scan_result=sample_scan_result,
                 affected_packages=[],
-                recommended_actions=[],
                 channels=channels,
                 metadata={"channels": [ch.value for ch in channels]}
             )
@@ -286,7 +282,6 @@ class TestNotificationServiceInterface:
                 message=f"Concurrent message {i}",
                 scan_result=sample_scan_result,
                 affected_packages=[],
-                recommended_actions=[],
                 channels=[NotificationChannel.EMAIL],
                 metadata={"concurrent": True, "index": i}
             )
@@ -319,7 +314,6 @@ class TestNotificationServiceInterface:
                 message=f"Mixed message {i}",
                 scan_result=sample_scan_result,
                 affected_packages=[],
-                recommended_actions=[],
                 channels=[NotificationChannel.EMAIL],
                 metadata={"mixed": True}
             )
@@ -367,7 +361,6 @@ class TestNotificationServiceInterface:
             message="This notification has a large payload",
             scan_result=sample_scan_result,
             affected_packages=[],
-            recommended_actions=["Action"] * 50,  # Large list
             channels=[NotificationChannel.EMAIL, NotificationChannel.SLACK],
             metadata=large_metadata
         )
@@ -382,4 +375,3 @@ class TestNotificationServiceInterface:
         stored_event = mock_notification_service.sent_notifications[0]
         assert stored_event.metadata["large_data"] == "x" * 10000
         assert len(stored_event.metadata["packages"]) == 1000
-        assert len(stored_event.recommended_actions) == 50

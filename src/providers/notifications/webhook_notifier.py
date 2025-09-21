@@ -78,7 +78,7 @@ class WebhookNotifier(NotificationService):
         Raises:
             NotificationError: If sending fails unexpectedly
         """
-        logger.info(f"Sending webhook notification: {event.event_id}")
+        logger.debug(f"Sending webhook notification: {event.event_id}")
         
         try:
             # Create standard payload
@@ -105,14 +105,14 @@ class WebhookNotifier(NotificationService):
         Returns:
             True if webhook is reachable and responds successfully
         """
-        logger.info("Performing webhook health check")
+        logger.debug("Performing webhook health check")
         
         try:
             test_payload = self._create_test_payload()
             success = await self._send_with_retries(test_payload)
             
             if success:
-                logger.info("Webhook health check passed")
+                logger.debug("Webhook health check passed")
             else:
                 logger.warning("Webhook health check failed")
             

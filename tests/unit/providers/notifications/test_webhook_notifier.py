@@ -23,8 +23,11 @@ class TestWebhookNotifier:
         assert notifier.retry_delay == 1.0
         assert notifier.custom_headers == {}
 
-    def test_init_without_webhook_url_raises_error(self):
+    def test_init_without_webhook_url_raises_error(self, monkeypatch):
         """Test that initialization without webhook URL raises error."""
+        # Clear any environment variable that might be set
+        monkeypatch.delenv('WEBHOOK_URL', raising=False)
+        
         with pytest.raises(NotificationError, match="Webhook URL not configured"):
             WebhookNotifier()
 

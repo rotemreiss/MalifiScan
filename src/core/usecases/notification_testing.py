@@ -118,7 +118,7 @@ class NotificationTestingUseCase:
             }
             
             if success:
-                self.logger.info("Basic test notification sent successfully")
+                self.logger.debug("Basic test notification sent successfully")
             else:
                 self.logger.warning("Basic test notification failed to send")
                 result["error"] = "Failed to send test notification"
@@ -161,7 +161,7 @@ class NotificationTestingUseCase:
             }
             
             if success:
-                self.logger.info("Malicious package test notification sent successfully")
+                self.logger.debug("Malicious package test notification sent successfully")
             else:
                 self.logger.warning("Malicious package test notification failed to send")
                 result["error"] = "Failed to send malicious package test notification"
