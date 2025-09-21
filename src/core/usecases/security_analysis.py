@@ -8,6 +8,7 @@ import logging
 from ..entities.malicious_package import MaliciousPackage
 from ..entities.scan_result import ScanResult, ScanStatus
 from ..entities.registry_package_match import RegistryPackageMatchBuilder
+from ..entities.notification_event import NotificationEvent, NotificationChannel
 from ..interfaces.packages_feed import PackagesFeed
 from ..interfaces.packages_registry_service import PackagesRegistryService
 from ..interfaces.storage_service import StorageService
@@ -20,7 +21,8 @@ class SecurityAnalysisUseCase:
         self,
         packages_feed: PackagesFeed,
         registry_service: PackagesRegistryService,
-        storage_service: Optional[StorageService] = None
+        storage_service: Optional[StorageService] = None,
+        notification_service: Optional[Any] = None
     ):
         """
         Initialize the security analysis use case.
@@ -29,10 +31,12 @@ class SecurityAnalysisUseCase:
             packages_feed: Service for fetching malicious package data
             registry_service: Service for interacting with package registry
             storage_service: Service for storing scan results (optional)
+            notification_service: Service for sending notifications (optional)
         """
         self.packages_feed = packages_feed
         self.registry_service = registry_service
         self.storage_service = storage_service
+        self.notification_service = notification_service
         self.logger = logging.getLogger(__name__)
     
     async def crossref_analysis(
@@ -40,7 +44,8 @@ class SecurityAnalysisUseCase:
         hours: int = 6, 
         ecosystem: str = "npm", 
         limit: Optional[int] = None,
-        save_report: bool = True
+        save_report: bool = True,
+        send_notifications: bool = True
     ) -> Dict[str, Any]:
         """
         Cross-reference OSV malicious packages with JFrog registry.
@@ -50,6 +55,7 @@ class SecurityAnalysisUseCase:
             ecosystem: Package ecosystem (default: npm)
             limit: Maximum number of malicious packages to check
             save_report: Whether to save the scan result to storage (default: True)
+            send_notifications: Whether to send notifications for critical matches (default: True)
             
         Returns:
             Dictionary containing analysis results
@@ -212,6 +218,20 @@ class SecurityAnalysisUseCase:
             }
             
             self.logger.info(f"Cross-reference analysis complete: {len(found_matches)} critical matches, {len(safe_packages)} safe packages, {not_found_count} not found, {len(errors)} errors")
+            
+            # Send notifications if enabled and there are critical matches
+            notification_sent = False
+            if send_notifications and self.notification_service and found_matches:
+                try:
+                    notification_sent = await self._send_critical_notification(
+                        scan_id, start_time, status, len(malicious_packages),
+                        malicious_packages, found_malicious_packages, errors
+                    )
+                    result["notification_sent"] = notification_sent
+                except Exception as e:
+                    self.logger.error(f"Failed to send notification: {e}")
+                    result["notification_error"] = str(e)
+            
             return result
             
         except Exception as e:
@@ -241,6 +261,7 @@ class SecurityAnalysisUseCase:
         limit: Optional[int] = None,
         save_report: bool = True,
         block_packages: bool = False,
+        send_notifications: bool = True,
         progress_callback: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
@@ -252,6 +273,7 @@ class SecurityAnalysisUseCase:
             limit: Maximum number of malicious packages to check
             save_report: Whether to save the scan result to storage (default: True)
             block_packages: Whether to block malicious packages before analysis (default: False)
+            send_notifications: Whether to send notifications for critical matches (default: True)
             progress_callback: Optional callback for progress updates
             
         Returns:
@@ -304,7 +326,7 @@ class SecurityAnalysisUseCase:
             if progress_callback:
                 progress_callback("Running cross-reference analysis...", 50 if block_packages else 0, 100)
             
-            analysis_result = await self.crossref_analysis(hours, ecosystem, limit, save_report)
+            analysis_result = await self.crossref_analysis(hours, ecosystem, limit, save_report, send_notifications)
             
             if progress_callback:
                 progress_callback("Analysis complete", 100, 100)
@@ -390,3 +412,74 @@ class SecurityAnalysisUseCase:
         )
         
         await self.storage_service.store_scan_result(scan_result, self.registry_service)
+    
+    async def _send_critical_notification(
+        self,
+        scan_id: str,
+        start_time: datetime,
+        status: ScanStatus,
+        packages_scanned: int,
+        all_malicious_packages: List[MaliciousPackage],
+        packages_found_in_registry: List[MaliciousPackage],
+        errors: List[str]
+    ) -> bool:
+        """
+        Send notification for critical security findings.
+        
+        Args:
+            scan_id: Unique identifier for the scan
+            start_time: When the scan started
+            status: Status of the scan
+            packages_scanned: Number of packages scanned
+            all_malicious_packages: List of all malicious packages from OSV feed
+            packages_found_in_registry: List of packages found in the registry (critical findings)
+            errors: List of error messages
+            
+        Returns:
+            True if notification was sent successfully, False otherwise
+        """
+        if not self.notification_service or not packages_found_in_registry:
+            return False
+        
+        try:
+            end_time = datetime.now(timezone.utc)
+            execution_duration = (end_time - start_time).total_seconds()
+            
+            # Create a ScanResult for the notification
+            scan_result = ScanResult(
+                scan_id=scan_id,
+                timestamp=start_time,
+                status=status,
+                packages_scanned=packages_scanned,
+                malicious_packages_found=all_malicious_packages,
+                packages_blocked=[],  # No blocking in this analysis
+                malicious_packages_list=packages_found_in_registry,  # These are the critical findings
+                errors=[str(error) if isinstance(error, dict) else error for error in errors],
+                execution_duration_seconds=execution_duration
+            )
+            
+            # Create notification event
+            event = NotificationEvent.create_threat_notification(
+                event_id=f"threat-{scan_id}",
+                scan_result=scan_result,
+                channels=[NotificationChannel.WEBHOOK],  # MS Teams uses webhook
+                metadata={
+                    "registry": self.registry_service.get_registry_name(),
+                    "scan_type": "crossref_analysis",
+                    "critical_packages_count": len(packages_found_in_registry)
+                }
+            )
+            
+            # Send notification
+            success = await self.notification_service.send_notification(event)
+            
+            if success:
+                self.logger.info(f"Successfully sent critical security notification for scan {scan_id}")
+            else:
+                self.logger.warning(f"Failed to send critical security notification for scan {scan_id}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error sending critical security notification: {e}")
+            return False

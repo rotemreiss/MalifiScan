@@ -125,7 +125,8 @@ class SecurityScannerApp:
             self.security_analysis = SecurityAnalysisUseCase(
                 packages_feed=self.services["packages_feed"],
                 registry_service=self.services["packages_registry"],
-                storage_service=self.services["storage_service"]
+                storage_service=self.services["storage_service"],
+                notification_service=self.services["notification_service"]
             )
             
             self.package_management = PackageManagementUseCase(
@@ -239,7 +240,7 @@ class SecurityScannerApp:
             self.logger.error(f"Error getting status: {e}")
             return {"error": str(e)}
     
-    async def security_crossref_analysis(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, save_report: bool = True) -> dict:
+    async def security_crossref_analysis(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, save_report: bool = True, send_notifications: bool = True) -> dict:
         """
         Cross-reference OSV malicious packages with JFrog registry.
         
@@ -248,6 +249,7 @@ class SecurityScannerApp:
             ecosystem: Package ecosystem (default: npm)
             limit: Maximum number of malicious packages to check
             save_report: Whether to save the scan result to storage (default: True)
+            send_notifications: Whether to send notifications for critical matches (default: True)
             
         Returns:
             Dictionary containing analysis results
@@ -255,7 +257,7 @@ class SecurityScannerApp:
         if not self.security_analysis:
             raise RuntimeError("Application not initialized")
         
-        return await self.security_analysis.crossref_analysis(hours, ecosystem, limit, save_report)
+        return await self.security_analysis.crossref_analysis(hours, ecosystem, limit, save_report, send_notifications)
     
     async def security_crossref_analysis_with_blocking(
         self, 
@@ -264,6 +266,7 @@ class SecurityScannerApp:
         limit: Optional[int] = None, 
         save_report: bool = True,
         block_packages: bool = False,
+        send_notifications: bool = True,
         progress_callback: Optional[Any] = None
     ) -> dict:
         """
@@ -284,7 +287,7 @@ class SecurityScannerApp:
             raise RuntimeError("Application not initialized")
         
         return await self.security_analysis.crossref_analysis_with_blocking(
-            hours, ecosystem, limit, save_report, block_packages, progress_callback
+            hours, ecosystem, limit, save_report, block_packages, send_notifications, progress_callback
         )
     
     async def block_package_in_registry(self, package_name: str, ecosystem: str = "npm", version: str = "*") -> dict:

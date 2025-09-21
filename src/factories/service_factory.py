@@ -12,7 +12,7 @@ from src.core.interfaces import (
 )
 from src.providers.feeds import OSVFeed
 from src.providers.registries import JFrogRegistry
-from src.providers.notifications import CompositeNotifier
+from src.providers.notifications import CompositeNotifier, MSTeamsNotifier
 from src.providers.storage import FileStorage, MemoryStorage, DatabaseStorage
 
 
@@ -128,8 +128,10 @@ class ServiceFactory:
             
             if service_type == "null":
                 return self._create_null_notifier()
+            elif service_type == "msteams":
+                return self._create_msteams_notifier()
             elif service_type == "composite":
-                # For future implementations like MS Teams
+                # For future implementations - multiple notification providers
                 return self._create_null_notifier()
             else:
                 logger.warning(f"Unknown notification service type: {self.config.notification_service.type}, using null notifier")
@@ -138,6 +140,17 @@ class ServiceFactory:
         except Exception as e:
             logger.warning(f"Failed to create notification service, using null notifier: {e}")
             return self._create_null_notifier()
+
+    def _create_msteams_notifier(self) -> NotificationService:
+        """Create MS Teams notifier with configuration."""
+        config = self.config.notification_service.config
+        
+        return MSTeamsNotifier(
+            webhook_url=config.get("webhook_url"),  # Can also be set via MSTEAMS_WEBHOOK_URL env var
+            timeout_seconds=config.get("timeout_seconds", 30),
+            max_retries=config.get("max_retries", 3),
+            retry_delay=config.get("retry_delay", 1.0)
+        )
 
     def _create_null_notifier(self) -> NotificationService:
         """Create a null notifier that does nothing (for disabled notifications)."""

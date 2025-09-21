@@ -271,7 +271,7 @@ class SecurityScannerCLI:
                 await registry.close()
             return False
 
-    async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False, block: bool = False) -> bool:
+    async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False, block: bool = False, no_notifications: bool = False) -> bool:
         """Cross-reference malicious packages from feed with package registry."""
         try:
             self.console.print(f"🔍 Security Cross-Reference Analysis", style="bold cyan")
@@ -368,7 +368,7 @@ class SecurityScannerCLI:
                 
                 # Use the core app for business logic
                 analysis_result = await self.app.security_crossref_analysis_with_blocking(
-                    hours, ecosystem, limit, not no_report, False,  # Set block=False since we already blocked above
+                    hours, ecosystem, limit, not no_report, False, not no_notifications,  # Set block=False since we already blocked above
                     progress_callback=lambda msg, current, total: progress.update(analysis_task, description=msg)
                 )
                 
@@ -827,6 +827,88 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error during health check: {e}", style="red")
             return False
 
+    async def notifications_check(self) -> bool:
+        """Test notification functionality by sending a dummy notification."""
+        try:
+            self.console.print("🔔 Testing Notification Service", style="bold cyan")
+            self.console.print()
+            
+            if not self.app:
+                self.console.print("❌ Application not initialized", style="red")
+                return False
+            
+            # Check if notification service is available and configured
+            notification_service = self.app.services.get("notification_service")
+            if not notification_service:
+                self.console.print("❌ Notification service not available", style="red")
+                return False
+            
+            # Check notification service health first
+            self.console.print("Checking notification service health...", style="yellow")
+            is_healthy = await notification_service.health_check()
+            
+            if not is_healthy:
+                self.console.print("❌ Notification service health check failed", style="red")
+                self.console.print("💡 Ensure your notification service is properly configured:", style="yellow")
+                self.console.print("  • For MS Teams: Set MSTEAMS_WEBHOOK_URL environment variable", style="dim")
+                self.console.print("  • Verify webhook URL is accessible", style="dim")
+                return False
+            
+            self.console.print("✅ Notification service is healthy", style="green")
+            
+            # Create a test notification event
+            from datetime import datetime, timezone
+            import uuid
+            from src.core.entities import NotificationEvent, NotificationLevel, NotificationChannel, ScanResult, ScanStatus, MaliciousPackage
+            
+            # Create a mock scan result for testing
+            test_scan_result = ScanResult(
+                scan_id=str(uuid.uuid4()),
+                timestamp=datetime.now(timezone.utc),
+                status=ScanStatus.SUCCESS,
+                packages_scanned=5,
+                malicious_packages_found=[],
+                packages_blocked=[],
+                malicious_packages_list=[],
+                errors=[],
+                execution_duration_seconds=1.5
+            )
+            
+            # Create test notification
+            test_event = NotificationEvent(
+                event_id=f"test-{uuid.uuid4()}",
+                timestamp=datetime.now(timezone.utc),
+                level=NotificationLevel.INFO,
+                title="🧪 Malifiscan Notification Test",
+                message="This is a test notification to verify that the notification system is working correctly. If you receive this message, your notification configuration is properly set up.",
+                scan_result=test_scan_result,
+                affected_packages=[],
+                recommended_actions=["Verify notification received", "Update notification settings if needed"],
+                channels=[NotificationChannel.WEBHOOK],
+                metadata={
+                    "test": True,
+                    "source": "malifiscan_cli",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+            
+            # Send test notification
+            self.console.print("Sending test notification...", style="yellow")
+            success = await notification_service.send_notification(test_event)
+            
+            if success:
+                self.console.print("✅ Test notification sent successfully!", style="green")
+                self.console.print("Check your notification channel to confirm receipt.", style="dim")
+                return True
+            else:
+                self.console.print("❌ Failed to send test notification", style="red")
+                return False
+                
+        except Exception as e:
+            self.console.print(f"❌ Error testing notifications: {e}", style="red")
+            logger.exception("Error in notifications test")
+            return False
+
     async def run_manual_scan(self) -> bool:
         """Run a manual security scan using the core app functionality."""
         try:
@@ -1128,6 +1210,7 @@ Examples:
     crossref_parser.add_argument("--limit", type=int, help="Maximum number of malicious packages to check (default: no limit)")
     crossref_parser.add_argument("--no-report", action="store_true", help="Skip saving scan report to storage")
     crossref_parser.add_argument("--block", action="store_true", help="Block malicious packages from OSV feed before searching (default: false)")
+    crossref_parser.add_argument("--no-notifications", action="store_true", help="Disable sending notifications for critical findings (default: false)")
     
     results_parser = scan_subparsers.add_parser("results", help="View scan results and findings")
     results_parser.add_argument("--scan-id", type=str, help="Show detailed results for specific scan ID")
@@ -1146,6 +1229,11 @@ Examples:
     health_parser = subparsers.add_parser("health", help="Service health operations")
     health_subparsers = health_parser.add_subparsers(dest="health_action")
     health_subparsers.add_parser("check", help="Check service health")
+    
+    # Notifications
+    notifications_parser = subparsers.add_parser("notifications", help="Notification service operations")
+    notifications_subparsers = notifications_parser.add_subparsers(dest="notifications_action")
+    notifications_subparsers.add_parser("check", help="Test notification functionality")
     
     # Test data
     test_parser = subparsers.add_parser("test", help="Test data operations")
@@ -1191,7 +1279,7 @@ Examples:
                 
         elif args.command == "scan":
             if args.scan_action == "crossref":
-                await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report, args.block)
+                await cli.security_crossref(args.hours, args.ecosystem, args.limit, args.no_report, args.block, args.no_notifications)
             elif args.scan_action == "results":
                 if args.scan_id:
                     await cli.scan_results_details(args.scan_id)
@@ -1201,6 +1289,10 @@ Examples:
         elif args.command == "health":
             if args.health_action == "check":
                 await cli.health_check()
+                
+        elif args.command == "notifications":
+            if args.notifications_action == "check":
+                await cli.notifications_check()
                 
         elif args.command == "test":
             if args.test_action == "create":
