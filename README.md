@@ -347,7 +347,7 @@ Configuration is loaded from multiple sources, with higher priority sources over
 
 #### Environment Variables (.env)
 
-Contains sensitive information like credentials and API keys:
+Contains sensitive information like credentials and API keys. Use `--env` to specify custom env file:
 
 ```bash
 # JFrog Configuration (Required)
@@ -358,6 +358,8 @@ JFROG_API_KEY=your-api-key-here
 SCANNER_INTERVAL_HOURS=1
 LOG_LEVEL=INFO
 ```
+
+**Example:** `uv run python cli.py --env .env.prodreg scan crossref`
 
 #### Local Configuration (config.local.yaml)
 
