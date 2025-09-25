@@ -28,6 +28,7 @@ class ScanResult:
     malicious_packages_list: List[MaliciousPackage]  # Previously packages_already_present
     errors: List[str]
     execution_duration_seconds: float
+    ecosystems_scanned: Optional[List[str]] = None  # Multi-ecosystem support
     
     @property
     def has_new_threats(self) -> bool:

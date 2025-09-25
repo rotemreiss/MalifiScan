@@ -13,6 +13,9 @@ A security tool that detects malicious packages from external vulnerability feed
 ## Table of Contents
 
 - [Features](#️-features)
+- [Ecosystem Support](#️-ecosystem-support)
+  - [Blocking Pattern Examples](#blocking-pattern-examples)
+  - [Multi-Ecosystem Usage](#multi-ecosystem-usage)
 - [Package Blocking & Security](#-package-blocking--security)
   - [How Exclusion Patterns Work](#how-exclusion-patterns-work)
   - [Blocking Commands](#blocking-commands)
@@ -44,6 +47,7 @@ A security tool that detects malicious packages from external vulnerability feed
 
 ## 🛡️ Features
 
+- **Multi-Ecosystem Support**: Supports scanning and blocking across 10 major package ecosystems
 - **OSV Feed Integration**: Fetches malicious package data from Google Cloud Storage OSV vulnerability database
 - **JFrog Artifactory Search**: Searches for packages in your Artifactory repositories using AQL (Artifactory Query Language)
 - **Security Cross-Reference**: Compares OSV malicious packages against your JFrog repositories to identify potential threats
@@ -53,6 +57,63 @@ A security tool that detects malicious packages from external vulnerability feed
 - **Time-Based Filtering**: Configurable time window for fetching recent malicious packages (default: 48 hours)
 - **Rich CLI Interface**: Interactive command-line interface with progress bars and formatted output
 - **Comprehensive Health Checks**: Validates connectivity to OSV and JFrog services
+
+## 📦 Ecosystem Support
+
+Malifiscan supports 10 major package ecosystems with varying levels of OSV scanning, JFrog searching, and blocking capabilities:
+
+| Ecosystem   | OSV Scanning | JFrog Scanning | JFrog Blocking | Notes |
+|-------------|--------------|----------------|----------------|-------|
+| **npm**     | ✅ Full      | ✅ Full        | ✅ Full        | Complete support with scoped packages |
+| **PyPI**    | ✅ Full      | ✅ Full        | ✅ Full        | Complete support with normalized names |
+| **Maven**   | ✅ Full      | ✅ Full        | ✅ Full        | Complete GAV (GroupId:ArtifactId:Version) support |
+| **Go**      | ✅ Full      | ✅ Full        | ✅ Full        | Complete module path and version support |
+| **NuGet**   | ✅ Full      | ✅ Full        | ✅ Full        | Complete package ID and version support |
+| **RubyGems** | ✅ Full     | ✅ Full        | ✅ Basic       | Standard gem file patterns |
+| **crates.io** | ✅ Full    | ✅ Full        | ✅ Basic       | Standard crate file patterns |
+| **Packagist** | ✅ Full    | ✅ Full        | ✅ Basic       | Composer vendor/package patterns |
+| **Pub**     | ✅ Full      | ✅ Full        | ⚠️ Limited     | Generic patterns only (Dart/Flutter) |
+| **Hex**     | ✅ Full      | ✅ Full        | ⚠️ Limited     | Generic patterns only (Elixir) |
+
+**Legend:**
+- **OSV Scanning**: Fetches malicious package data from OSV vulnerability database
+- **JFrog Scanning**: Searches for packages in JFrog Artifactory repositories using AQL
+- **JFrog Blocking**: Creates exclusion patterns to block package downloads
+  - **✅ Full**: Complete blocking support with ecosystem-specific patterns
+  - **✅ Basic**: Good support with standard file patterns  
+  - **⚠️ Limited**: Basic patterns with limited blocking effectiveness
+
+### Blocking Pattern Examples
+
+Different ecosystem support levels create different types of exclusion patterns when blocking packages:
+
+**✅ Full Support (Precise Patterns)**
+- **npm**: `axios/-/axios-1.12.2.tgz` (targets exact tarball file)
+- **PyPI**: `simple/requests/requests-2.28.1*` (follows PyPI simple API structure)  
+- **Maven**: `com/example/evil-lib/1.0.0/**` (follows GAV structure: GroupId/ArtifactId/Version)
+- **Go**: `github.com/user/module/@v/v1.2.3*` (follows Go module proxy structure)
+- **NuGet**: `packagename/1.0.0/**` (follows NuGet repository layout)
+
+**✅ Basic Support (Standard Patterns)**
+- **RubyGems**: `gems/package-name-1.0.0.gem` (standard gem file format)
+- **crates.io**: `crates/package-name/package-name-1.0.0.crate` (standard crate format)
+- **Packagist**: `vendor/package/1.0.0/**` (Composer vendor/package structure)
+
+**⚠️ Limited Support (Generic Patterns)**
+- **Pub/Hex**: `**/package-name-1.0.0*` or `**/package-name/**` (broad wildcards)
+
+The blocking effectiveness decreases from **Full** (surgical precision) to **Limited** (broad patterns that might block more than intended or miss some variations).
+
+### Multi-Ecosystem Usage
+
+```bash
+# Scan all available ecosystems (default behavior)
+uv run python cli.py scan crossref
+
+# Scan specific ecosystem only
+uv run python cli.py scan crossref --ecosystem npm
+uv run python cli.py scan crossref --ecosystem PyPI
+```
 
 ## 🚫 Package Blocking & Security
 
@@ -218,9 +279,6 @@ uv run python cli.py registry list-blocked npm
 uv run python cli.py scan crossref
 uv run python cli.py scan crossref --hours 24
 
-# Test security scan
-uv run python cli.py scan test
-
 # Interactive mode
 uv run python cli.py interactive
 ```
@@ -261,12 +319,6 @@ python cli.py scan crossref --hours 24
 python cli.py scan crossref --hours 6 --ecosystem npm --limit 100
 ```
 Fetches malicious packages from OSV (last 6 hours by default) and searches for them in your JFrog repositories.
-
-**Test Security Scan**
-```bash
-python cli.py scan test
-```
-Runs a test scan with known packages to validate the system.
 
 #### Using Docker
 
@@ -508,4 +560,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**⚠️ Note**: This tool is for security assessment purposes. Always validate results before taking action on package repositories.
+**⚠️ Note**: This tool is provided as-is for security assessment purposes - users are responsible for testing and validating all results before taking any action, and the author assumes no responsibility for issues arising from its use. 🤷

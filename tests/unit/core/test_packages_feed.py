@@ -20,7 +20,7 @@ class MockPackagesFeed(PackagesFeed):
         self.should_raise_error = False
         self.error_message = "Mock error"
     
-    async def fetch_malicious_packages(self, max_packages: Optional[int] = None, hours: Optional[int] = None) -> List[MaliciousPackage]:
+    async def fetch_malicious_packages(self, max_packages: Optional[int] = None, hours: Optional[int] = None, ecosystems: Optional[List[str]] = None) -> List[MaliciousPackage]:
         """Mock implementation of fetch_malicious_packages."""
         self.fetch_call_count += 1
         
@@ -32,9 +32,22 @@ class MockPackagesFeed(PackagesFeed):
         if max_packages is not None:
             packages = packages[:max_packages]
         
+        # Filter by ecosystems if specified
+        if ecosystems is not None:
+            packages = [p for p in packages if p.ecosystem in ecosystems]
+        
         # In a real implementation, hours would filter by modification time
         # For testing, we'll just return the filtered packages
         return packages
+
+    async def get_available_ecosystems(self) -> List[str]:
+        """Mock implementation of get_available_ecosystems."""
+        if self.should_raise_error:
+            raise Exception(self.error_message)
+        
+        # Return ecosystems from packages in the mock
+        ecosystems = list(set(package.ecosystem for package in self.packages))
+        return ecosystems
     
     async def health_check(self) -> bool:
         """Mock implementation of health_check."""

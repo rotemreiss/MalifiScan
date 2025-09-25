@@ -271,12 +271,17 @@ class SecurityScannerCLI:
                 await registry.close()
             return False
 
-    async def security_crossref(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, no_report: bool = False, block: bool = False, no_notifications: bool = False) -> bool:
+    async def security_crossref(self, hours: int = 6, ecosystem: Optional[str] = None, limit: Optional[int] = None, no_report: bool = False, block: bool = False, no_notifications: bool = False) -> bool:
         """Cross-reference malicious packages from feed with package registry."""
         try:
             self.console.print(f"🔍 Security Cross-Reference Analysis", style="bold cyan")
             self.console.print(f"📅 Looking for malicious packages from the last {hours} hours")
-            self.console.print(f"🏗️ Ecosystem: {ecosystem}")
+            
+            if ecosystem:
+                self.console.print(f"🏗️ Ecosystem: {ecosystem}")
+            else:
+                self.console.print(f"🏗️ Ecosystems: All available (registry-first optimization)")
+                
             if block:
                 self.console.print(f"🚫 Block mode: Will proactively block malicious packages", style="bold red")
             self.console.print()
@@ -310,10 +315,20 @@ class SecurityScannerCLI:
                 malicious_packages = fetch_result["packages"]
             
             if not malicious_packages:
-                self.console.print(f"✅ No malicious {ecosystem} packages found in the last {hours} hours", style="green")
+                ecosystem_desc = ecosystem if ecosystem else "packages across all ecosystems"
+                self.console.print(f"✅ No malicious {ecosystem_desc} found in the last {hours} hours", style="green")
                 return True
             
-            self.console.print(f"📦 Found {len(malicious_packages)} malicious {ecosystem} packages from feed", style="green")
+            # Create ecosystem description for display
+            ecosystem_desc = ecosystem if ecosystem else ""
+            self.console.print(f"📦 Found {len(malicious_packages)} malicious packages from feed{' (' + ecosystem + ')' if ecosystem else ''}", style="green")
+            
+            # Show ecosystem breakdown if available and not filtering by single ecosystem
+            if not ecosystem and fetch_result.get("ecosystems"):
+                ecosystems = fetch_result["ecosystems"]
+                for eco, count in ecosystems.items():
+                    self.console.print(f"  • {eco}: {count} packages", style="blue")
+                self.console.print()  # Add blank line for better readability
             
             # Step 2: Block packages (if selected)
             if block:
@@ -391,6 +406,14 @@ class SecurityScannerCLI:
             self.console.print("\n" + "="*80, style="bold")
             self.console.print("🛡️ SECURITY ANALYSIS RESULTS", style="bold cyan")
             self.console.print("="*80, style="bold")
+            
+            # Display ecosystem information
+            ecosystems_scanned = analysis_result.get("ecosystems_scanned", [])
+            if ecosystems_scanned:
+                self.console.print(f"🏗️ Ecosystems scanned: {', '.join(ecosystems_scanned)}", style="blue")
+                if len(ecosystems_scanned) > 1:
+                    self.console.print(f"📊 Multi-ecosystem analysis with registry-first optimization", style="blue")
+                self.console.print()
             
             # Get registry name and dynamic field names
             registry_name = await self._get_registry_name()
@@ -1190,7 +1213,7 @@ Examples:
     
     crossref_parser = scan_subparsers.add_parser("crossref", help="Cross-reference malicious packages from feed with package registry")
     crossref_parser.add_argument("--hours", type=int, default=6, help="Hours ago to look for recent malicious packages (default: 6)")
-    crossref_parser.add_argument("--ecosystem", default="npm", help="Package ecosystem (default: npm)")
+    crossref_parser.add_argument("--ecosystem", help="Package ecosystem (default: all available ecosystems)")
     crossref_parser.add_argument("--limit", type=int, help="Maximum number of malicious packages to check (default: no limit)")
     crossref_parser.add_argument("--no-report", action="store_true", help="Skip saving scan report to storage")
     crossref_parser.add_argument("--block", action="store_true", help="Block malicious packages from OSV feed before searching (default: false)")

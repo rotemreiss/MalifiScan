@@ -240,13 +240,13 @@ class SecurityScannerApp:
             self.logger.error(f"Error getting status: {e}")
             return {"error": str(e)}
     
-    async def security_crossref_analysis(self, hours: int = 6, ecosystem: str = "npm", limit: Optional[int] = None, save_report: bool = True, send_notifications: bool = True) -> dict:
+    async def security_crossref_analysis(self, hours: int = 6, ecosystem: Optional[str] = None, limit: Optional[int] = None, save_report: bool = True, send_notifications: bool = True) -> dict:
         """
         Cross-reference OSV malicious packages with JFrog registry.
         
         Args:
             hours: Hours ago to look for recent malicious packages
-            ecosystem: Package ecosystem (default: npm)
+            ecosystem: Package ecosystem (None for all available ecosystems)
             limit: Maximum number of malicious packages to check
             save_report: Whether to save the scan result to storage (default: True)
             send_notifications: Whether to send notifications for critical matches (default: True)
@@ -262,7 +262,7 @@ class SecurityScannerApp:
     async def security_crossref_analysis_with_blocking(
         self, 
         hours: int = 6, 
-        ecosystem: str = "npm", 
+        ecosystem: Optional[str] = None, 
         limit: Optional[int] = None, 
         save_report: bool = True,
         block_packages: bool = False,

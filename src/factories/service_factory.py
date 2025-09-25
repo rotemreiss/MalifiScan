@@ -14,6 +14,7 @@ from src.providers.feeds import OSVFeed
 from src.providers.registries import JFrogRegistry
 from src.providers.notifications import CompositeNotifier, MSTeamsNotifier, WebhookNotifier
 from src.providers.storage import FileStorage, MemoryStorage, DatabaseStorage
+from src.providers.exceptions import NotificationError
 
 
 logger = logging.getLogger(__name__)
@@ -139,8 +140,13 @@ class ServiceFactory:
                 logger.warning(f"Unknown notification service type: {self.config.notification_service.type}, using null notifier")
                 return self._create_null_notifier()
         
+        except NotificationError:
+            # Provide user-friendly guidance when notifications aren't configured
+            logger.info("📢 Notifications are disabled - configure notification settings to enable alerts")
+            return self._create_null_notifier()
         except Exception as e:
-            logger.warning(f"Failed to create notification service, using null notifier: {e}")
+            # Handle other unexpected errors
+            logger.warning(f"Failed to create notification service: {e}")
             return self._create_null_notifier()
 
     def _create_msteams_notifier(self) -> NotificationService:

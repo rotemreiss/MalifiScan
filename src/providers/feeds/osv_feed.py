@@ -58,13 +58,14 @@ class OSVFeed(PackagesFeed):
             self._bucket = client.bucket(self.bucket_name)
         return self._bucket
     
-    async def fetch_malicious_packages(self, max_packages: Optional[int] = None, hours: Optional[int] = None) -> List[MaliciousPackage]:
+    async def fetch_malicious_packages(self, max_packages: Optional[int] = None, hours: Optional[int] = None, ecosystems: Optional[List[str]] = None) -> List[MaliciousPackage]:
         """
         Fetch malicious packages from OSV GCS bucket.
         
         Args:
             max_packages: Maximum number of packages to fetch (None for all)
             hours: Fetch packages modified within the last N hours (None for all time)
+            ecosystems: List of ecosystems to fetch (None for all available ecosystems)
         
         Returns:
             List of MaliciousPackage entities
@@ -75,16 +76,82 @@ class OSVFeed(PackagesFeed):
         logger.info("Fetching malicious packages from OSV GCS bucket")
         
         try:
-            # For now, only support npm ecosystem as requested
-            ecosystem = "npm"
-            packages = await self._fetch_malicious_packages_for_ecosystem(ecosystem, max_packages, hours)
+            # If no ecosystems specified, get all available ecosystems with malicious packages
+            if ecosystems is None:
+                ecosystems = await self.get_available_ecosystems()
+                logger.info(f"No ecosystems specified, fetching from all available: {ecosystems}")
+            else:
+                logger.info(f"Fetching from specified ecosystems: {ecosystems}")
             
-            logger.info(f"Successfully fetched {len(packages)} malicious packages from OSV")
-            return packages
+            all_packages = []
+            
+            # Process each ecosystem
+            for ecosystem in ecosystems:
+                try:
+                    logger.info(f"Processing ecosystem: {ecosystem}")
+                    ecosystem_packages = await self._fetch_malicious_packages_for_ecosystem(ecosystem, max_packages, hours)
+                    all_packages.extend(ecosystem_packages)
+                    logger.info(f"Fetched {len(ecosystem_packages)} packages from {ecosystem}")
+                except Exception as e:
+                    logger.warning(f"Failed to fetch packages from ecosystem {ecosystem}: {e}")
+                    continue
+            
+            logger.info(f"Successfully fetched {len(all_packages)} malicious packages from {len(ecosystems)} ecosystems")
+            return all_packages
             
         except Exception as e:
             logger.error(f"Failed to fetch malicious packages: {e}")
             raise FeedError(f"Failed to fetch OSV data: {e}") from e
+    
+    async def get_available_ecosystems(self) -> List[str]:
+        """
+        Get list of available ecosystems with malicious packages in OSV.
+        
+        Returns:
+            List of ecosystem names that contain malicious packages (MAL- prefixed vulnerabilities)
+            
+        Raises:
+            FeedError: If the ecosystems cannot be discovered
+        """
+        logger.info("Discovering available ecosystems with malicious packages")
+        
+        try:
+            # Define known ecosystems that contain malicious packages based on OSV structure
+            # These are the main package manager ecosystems that OSV tracks
+            known_ecosystems = [
+                "npm",
+                "PyPI", 
+                "Maven",
+                "Go",
+                "NuGet",
+                "crates.io",
+                "RubyGems",
+                "Packagist",
+                "Pub",
+                "Hex"
+            ]
+            
+            available_ecosystems = []
+            
+            for ecosystem in known_ecosystems:
+                try:
+                    # Check if ecosystem has malicious packages by trying to read modified_id.csv
+                    malicious_ids = await self._get_malicious_package_ids(ecosystem, None)
+                    if malicious_ids:
+                        available_ecosystems.append(ecosystem)
+                        logger.debug(f"Ecosystem {ecosystem} has {len(malicious_ids)} malicious packages")
+                    else:
+                        logger.debug(f"Ecosystem {ecosystem} has no malicious packages")
+                except Exception as e:
+                    logger.debug(f"Ecosystem {ecosystem} not available or accessible: {e}")
+                    continue
+            
+            logger.info(f"Found {len(available_ecosystems)} ecosystems with malicious packages: {available_ecosystems}")
+            return available_ecosystems
+            
+        except Exception as e:
+            logger.error(f"Failed to discover available ecosystems: {e}")
+            return []  # Return empty list on error for graceful degradation
     
     async def _fetch_malicious_packages_for_ecosystem(self, ecosystem: str, max_packages: Optional[int] = None, hours: Optional[int] = None) -> List[MaliciousPackage]:
         """Fetch malicious packages for a specific ecosystem from GCS bucket."""

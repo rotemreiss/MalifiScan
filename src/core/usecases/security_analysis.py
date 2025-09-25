@@ -42,7 +42,7 @@ class SecurityAnalysisUseCase:
     async def crossref_analysis(
         self, 
         hours: int = 6, 
-        ecosystem: str = "npm", 
+        ecosystem: Optional[str] = None, 
         limit: Optional[int] = None,
         save_report: bool = True,
         send_notifications: bool = True
@@ -52,7 +52,7 @@ class SecurityAnalysisUseCase:
         
         Args:
             hours: Hours ago to look for recent malicious packages
-            ecosystem: Package ecosystem (default: npm)
+            ecosystem: Package ecosystem to filter (None for all available ecosystems)
             limit: Maximum number of malicious packages to check
             save_report: Whether to save the scan result to storage (default: True)
             send_notifications: Whether to send notifications for critical matches (default: True)
@@ -65,29 +65,45 @@ class SecurityAnalysisUseCase:
         errors = []
         
         try:
-            self.logger.debug(f"Starting security cross-reference analysis for {ecosystem} packages from last {hours} hours (scan_id: {scan_id})")
+            # Determine which ecosystems to scan
+            if ecosystem:
+                ecosystems_to_scan = [ecosystem]
+                self.logger.debug(f"Starting security cross-reference analysis for {ecosystem} packages from last {hours} hours (scan_id: {scan_id})")
+            else:
+                # Get all available ecosystems from OSV
+                all_osv_ecosystems = await self.packages_feed.get_available_ecosystems()
+                
+                # Get supported ecosystems from registry
+                if hasattr(self.registry_service, 'get_supported_ecosystems'):
+                    registry_ecosystems = await self.registry_service.get_supported_ecosystems()
+                    # Only scan ecosystems that both OSV and registry support
+                    ecosystems_to_scan = [eco for eco in all_osv_ecosystems if eco in registry_ecosystems]
+                else:
+                    # Fallback to all OSV ecosystems if registry doesn't support discovery
+                    ecosystems_to_scan = all_osv_ecosystems
+                
+                self.logger.info(f"Starting multi-ecosystem security scan for {len(ecosystems_to_scan)} ecosystems: {ecosystems_to_scan}")
             
-            # Step 1: Fetch recent malicious packages from OSV
+            # Step 1: Fetch recent malicious packages from OSV for specified ecosystems
             malicious_packages = await self.packages_feed.fetch_malicious_packages(
                 max_packages=limit,
-                hours=hours
+                hours=hours,
+                ecosystems=ecosystems_to_scan
             )
             
-            # Filter by ecosystem since OSV returns all ecosystems
-            malicious_packages = [pkg for pkg in malicious_packages if pkg.ecosystem.lower() == ecosystem.lower()]
-            
             if not malicious_packages:
-                self.logger.info(f"No malicious {ecosystem} packages found in the last {hours} hours")
+                self.logger.info(f"No malicious packages found in the last {hours} hours for ecosystems: {ecosystems_to_scan}")
                 
                 # Save empty scan result if storage is available and save_report is True
                 if save_report and self.storage_service:
                     await self._save_scan_result(
-                        scan_id, start_time, ScanStatus.SUCCESS, 0, [], [], [], errors
+                        scan_id, start_time, ScanStatus.SUCCESS, 0, [], [], [], errors, ecosystems_to_scan
                     )
                 
                 return {
                     "success": True,
                     "scan_id": scan_id,
+                    "ecosystems_scanned": ecosystems_to_scan,
                     "total_osv_packages": 0,
                     "filtered_packages": 0,
                     "found_matches": [],
@@ -97,7 +113,18 @@ class SecurityAnalysisUseCase:
                     "report_saved": save_report and self.storage_service is not None
                 }
             
-            self.logger.debug(f"Found {len(malicious_packages)} malicious {ecosystem} packages to check")
+            # Group packages by ecosystem for reporting
+            packages_by_ecosystem = {}
+            for pkg in malicious_packages:
+                eco = pkg.ecosystem
+                if eco not in packages_by_ecosystem:
+                    packages_by_ecosystem[eco] = []
+                packages_by_ecosystem[eco].append(pkg)
+            
+            ecosystem_summary = {eco: len(pkgs) for eco, pkgs in packages_by_ecosystem.items()}
+            self.logger.info(f"Found {len(malicious_packages)} malicious packages across ecosystems: {ecosystem_summary}")
+            
+            self.logger.debug(f"Found {len(malicious_packages)} malicious packages to check")
             
             # Step 2: Check each malicious package against JFrog
             
@@ -111,7 +138,7 @@ class SecurityAnalysisUseCase:
                 if save_report and self.storage_service:
                     await self._save_scan_result(
                         scan_id, start_time, ScanStatus.FAILED, len(malicious_packages), 
-                        malicious_packages, [], [], errors
+                        malicious_packages, [], [], errors, ecosystems_to_scan
                     )
                 
                 return {
@@ -136,8 +163,8 @@ class SecurityAnalysisUseCase:
             
             for malicious_pkg in malicious_packages:
                 try:
-                    # Search for this package in the registry
-                    registry_results = await self.registry_service.search_packages(malicious_pkg.name, ecosystem)
+                    # Search for this package in the registry using its specific ecosystem
+                    registry_results = await self.registry_service.search_packages(malicious_pkg.name, malicious_pkg.ecosystem)
                     
                     if registry_results:
                         # Check if any versions match
@@ -161,14 +188,15 @@ class SecurityAnalysisUseCase:
                         
                         if version_matches:
                             found_matches.append(package_match.to_match_dict())
-                            self.logger.warning(f"Critical match found: {malicious_pkg.name} versions {version_matches}")
+                            self.logger.warning(f"Critical match found: {malicious_pkg.name} ({malicious_pkg.ecosystem}) versions {version_matches}")
                         else:
                             safe_packages.append(package_match.to_safe_dict())
                     
                 except Exception as e:
-                    self.logger.error(f"Error checking package {malicious_pkg.name}: {e}")
+                    self.logger.error(f"Error checking package {malicious_pkg.name} ({malicious_pkg.ecosystem}): {e}")
                     errors.append({
                         'package': malicious_pkg.name,
+                        'ecosystem': malicious_pkg.ecosystem,
                         'error': str(e)
                     })
             
@@ -197,7 +225,7 @@ class SecurityAnalysisUseCase:
                 try:
                     await self._save_scan_result(
                         scan_id, start_time, status, len(malicious_packages), 
-                        malicious_packages, [], found_malicious_packages, errors
+                        malicious_packages, [], found_malicious_packages, errors, ecosystems_to_scan
                     )
                     report_saved = True
                     self.logger.debug(f"Scan result saved to storage (scan_id: {scan_id})")
@@ -208,6 +236,7 @@ class SecurityAnalysisUseCase:
             result = {
                 "success": True,
                 "scan_id": scan_id,
+                "ecosystems_scanned": ecosystems_to_scan,
                 "total_osv_packages": len(malicious_packages),
                 "filtered_packages": len(malicious_packages),
                 "found_matches": found_matches,
@@ -378,7 +407,8 @@ class SecurityAnalysisUseCase:
         malicious_packages_found: List[MaliciousPackage],
         packages_blocked: List[str],
         packages_already_present: List[MaliciousPackage],
-        errors: List[str]
+        errors: List[str],
+        ecosystems_scanned: Optional[List[str]] = None
     ) -> None:
         """
         Save scan result to storage.
@@ -392,6 +422,7 @@ class SecurityAnalysisUseCase:
             packages_blocked: List of package names that were blocked
             packages_already_present: List of packages found in the JFrog registry (findings)
             errors: List of error messages
+            ecosystems_scanned: List of ecosystems that were scanned (optional)
         """
         if not self.storage_service:
             return
@@ -408,7 +439,8 @@ class SecurityAnalysisUseCase:
             packages_blocked=packages_blocked,
             malicious_packages_list=packages_already_present,
             errors=[str(error) if isinstance(error, dict) else error for error in errors],
-            execution_duration_seconds=execution_duration
+            execution_duration_seconds=execution_duration,
+            ecosystems_scanned=ecosystems_scanned
         )
         
         await self.storage_service.store_scan_result(scan_result, self.registry_service)

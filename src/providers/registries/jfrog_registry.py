@@ -223,11 +223,67 @@ class JFrogRegistry(PackagesRegistryService):
             "NuGet": "nuget",
             "RubyGems": "gems",
             "crates.io": "cargo",
-            "Packagist": "composer"
+            "Packagist": "composer",
+            "Pub": "generic",  # Dart/Flutter packages often stored as generic
+            "Hex": "generic"   # Elixir packages often stored as generic
         }
         
         expected_type = ecosystem_to_package_type.get(ecosystem, "").lower()
         return package_type == expected_type
+    
+    async def get_supported_ecosystems(self) -> List[str]:
+        """
+        Get list of ecosystems supported by this registry.
+        
+        Returns:
+            List of ecosystem names that this registry can handle
+        """
+        return [
+            "npm",
+            "PyPI", 
+            "Maven",
+            "Go",
+            "NuGet",
+            "RubyGems",
+            "crates.io",
+            "Packagist",
+            "Pub",
+            "Hex"
+        ]
+    
+    def get_ecosystem_blocking_support(self, ecosystem: str) -> Dict[str, bool]:
+        """
+        Get blocking support information for an ecosystem.
+        
+        Args:
+            ecosystem: Ecosystem name
+            
+        Returns:
+            Dictionary with scanning and blocking support flags
+        """
+        # Ecosystems with full exclusion pattern support
+        full_support = {
+            "npm", "PyPI", "Maven", "Go", "NuGet"
+        }
+        
+        # Ecosystems with basic exclusion pattern support
+        basic_support = {
+            "RubyGems", "crates.io", "Packagist"
+        }
+        
+        # Ecosystems with scanning but limited blocking support
+        limited_support = {
+            "Pub", "Hex"
+        }
+        
+        if ecosystem in full_support:
+            return {"scanning": True, "blocking": True, "pattern_quality": "full"}
+        elif ecosystem in basic_support:
+            return {"scanning": True, "blocking": True, "pattern_quality": "basic"}
+        elif ecosystem in limited_support:
+            return {"scanning": True, "blocking": False, "pattern_quality": "none"}
+        else:
+            return {"scanning": False, "blocking": False, "pattern_quality": "none"}
     
     async def _add_exclusion_patterns(self, repo_name: str, packages: List[MaliciousPackage]) -> int:
         """
@@ -364,6 +420,49 @@ class JFrogRegistry(PackagesRegistryService):
                 base_pattern = f"{package.name.lower()}/{package.version}/**"
             else:
                 base_pattern = f"{package.name.lower()}/**"
+                
+        elif package.ecosystem == "RubyGems":
+            # RubyGems exclusion patterns
+            if package.version:
+                base_pattern = f"gems/{package.name}-{package.version}.gem"
+            else:
+                base_pattern = f"gems/{package.name}-*.gem"
+                
+        elif package.ecosystem == "crates.io":
+            # Rust crates exclusion patterns
+            if package.version:
+                base_pattern = f"crates/{package.name}/{package.name}-{package.version}.crate"
+            else:
+                base_pattern = f"crates/{package.name}/**"
+                
+        elif package.ecosystem == "Packagist":
+            # PHP Composer exclusion patterns
+            if "/" in package.name:  # vendor/package format
+                if package.version:
+                    base_pattern = f"{package.name}/{package.version}/**"
+                else:
+                    base_pattern = f"{package.name}/**"
+            else:
+                if package.version:
+                    base_pattern = f"**/{package.name}/{package.version}/**"
+                else:
+                    base_pattern = f"**/{package.name}/**"
+                    
+        elif package.ecosystem == "Pub":
+            # Dart/Flutter packages (often stored as generic artifacts)
+            logger.warning(f"Pub/Dart ecosystem has limited blocking support for package: {package.name}")
+            if package.version:
+                base_pattern = f"**/{package.name}-{package.version}*"
+            else:
+                base_pattern = f"**/{package.name}*"
+                
+        elif package.ecosystem == "Hex":
+            # Elixir packages (often stored as generic artifacts)
+            logger.warning(f"Hex/Elixir ecosystem has limited blocking support for package: {package.name}")
+            if package.version:
+                base_pattern = f"**/{package.name}-{package.version}*"
+            else:
+                base_pattern = f"**/{package.name}*"
                 
         else:
             # Generic pattern for unsupported ecosystems
@@ -567,7 +666,10 @@ class JFrogRegistry(PackagesRegistryService):
             "Go": "go-remote",
             "NuGet": "nuget-remote",
             "RubyGems": "gems-remote",
-            "crates.io": "cargo-remote"
+            "crates.io": "cargo-remote",
+            "Packagist": "composer-remote",
+            "Pub": "generic-remote",
+            "Hex": "generic-remote"
         }
         return ecosystem_mapping.get(ecosystem)
     
