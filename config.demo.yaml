@@ -1,0 +1,199 @@
+# Demo Configuration for CLI Color Testing
+# This configuration has pre-populated test data to demonstrate CLI output
+
+environment: test
+debug: false
+
+# Memory feed with sample malicious packages for demonstration
+packages_feed:
+  enabled: true
+  type: memory
+  config:
+    timeout_seconds: 5
+    max_retries: 1
+    retry_delay: 0.1
+    packages:
+      # CRITICAL MATCHES (will show RED in CLI)
+      - name: "critical-match-1"
+        version: "1.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/critical-match-1@1.0.0"
+        advisory_id: "DEMO-CRITICAL-001"
+        summary: "First critical package for CLI demo"
+        details: "Critical vulnerability with exact version match"
+        aliases: ["CVE-2024-CRIT-001"]
+        affected_versions: ["1.0.0", "1.1.0"]
+        database_specific:
+          severity: "CRITICAL"
+        published_at: "2024-09-29T09:00:00Z"
+        modified_at: "2024-09-29T09:00:00Z"
+      
+      - name: "critical-match-2"
+        version: "2.5.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/critical-match-2@2.5.0"
+        advisory_id: "DEMO-CRITICAL-002"
+        summary: "Second critical package for CLI demo"
+        details: "High severity with multiple affected versions"
+        aliases: ["CVE-2024-CRIT-002"]
+        affected_versions: ["2.5.0", "2.6.0", "3.0.0"]
+        database_specific:
+          severity: "HIGH"
+        published_at: "2024-09-29T09:30:00Z"
+        modified_at: "2024-09-29T09:30:00Z"
+
+      # SAFE PACKAGES (will show YELLOW - different versions)
+      - name: "safe-different-versions"
+        version: "1.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/safe-different-versions@1.0.0"
+        advisory_id: "DEMO-SAFE-001"
+        summary: "Safe package with different versions in registry"
+        details: "Malicious versions don't match registry versions"
+        aliases: ["CVE-2024-SAFE-001"]
+        affected_versions: ["1.0.0", "1.1.0"]  # Registry has 2.0.0, 3.0.0
+        database_specific:
+          severity: "MEDIUM"
+        published_at: "2024-09-29T08:00:00Z"
+        modified_at: "2024-09-29T08:00:00Z"
+
+      - name: "safe-old-versions"
+        version: "0.5.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/safe-old-versions@0.5.0"
+        advisory_id: "DEMO-SAFE-002"
+        summary: "Package with old vulnerable versions"
+        details: "Registry has newer safe versions only"
+        aliases: ["CVE-2024-OLD-001"]
+        affected_versions: ["0.5.0", "0.6.0"]  # Registry has 1.5.0, 2.0.0
+        database_specific:
+          severity: "LOW"
+        published_at: "2024-09-29T08:30:00Z"
+        modified_at: "2024-09-29T08:30:00Z"
+
+      # NOT FOUND PACKAGES (will show GREEN - not in registry)
+      - name: "not-in-registry-1"
+        version: "1.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/not-in-registry-1@1.0.0"
+        advisory_id: "DEMO-NOTFOUND-001"
+        summary: "Package not present in registry"
+        details: "This malicious package doesn't exist in the registry"
+        aliases: ["CVE-2024-MISSING-001"]
+        affected_versions: ["1.0.0", "2.0.0"]
+        database_specific:
+          severity: "HIGH"
+        published_at: "2024-09-29T07:00:00Z"
+        modified_at: "2024-09-29T07:00:00Z"
+
+      - name: "not-in-registry-2"
+        version: "3.2.1"
+        ecosystem: "npm"
+        package_url: "pkg:npm/not-in-registry-2@3.2.1"
+        advisory_id: "DEMO-NOTFOUND-002"
+        summary: "Another package absent from registry"
+        details: "Second example of malicious package not in registry"
+        aliases: ["CVE-2024-MISSING-002"]
+        affected_versions: ["3.2.1", "3.3.0"]
+        database_specific:
+          severity: "CRITICAL"
+        published_at: "2024-09-29T06:30:00Z"
+        modified_at: "2024-09-29T06:30:00Z"
+
+# Null registry with simulated packages for cross-reference testing
+packages_registry:
+  enabled: true
+  type: "null"
+  config:
+    timeout_seconds: 5
+    max_retries: 1
+    retry_delay: 0.1
+    packages:
+      # CRITICAL MATCHES - These packages have overlapping versions with malicious packages
+      - name: "critical-match-1"
+        version: "1.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/critical-match-1@1.0.0"
+        advisory_id: "REGISTRY-CRIT-001"
+        summary: "Registry package with critical overlap"
+        details: "Has version 1.0.0 which matches malicious package"
+        aliases: []
+        affected_versions: ["1.0.0", "1.2.0"]  # 1.0.0 overlaps with malicious
+        database_specific: {}
+        published_at: "2024-09-29T06:00:00Z"
+        modified_at: "2024-09-29T06:00:00Z"
+      
+      - name: "critical-match-2"
+        version: "2.5.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/critical-match-2@2.5.0"
+        advisory_id: "REGISTRY-CRIT-002"
+        summary: "Second registry package with critical overlap"
+        details: "Has versions 2.5.0 and 3.0.0 which match malicious package"
+        aliases: []
+        affected_versions: ["2.5.0", "3.0.0", "3.1.0"]  # 2.5.0, 3.0.0 overlap
+        database_specific: {}
+        published_at: "2024-09-29T06:15:00Z"
+        modified_at: "2024-09-29T06:15:00Z"
+
+      # SAFE PACKAGES - These have different versions (no overlap)
+      - name: "safe-different-versions"
+        version: "2.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/safe-different-versions@2.0.0"
+        advisory_id: "REGISTRY-SAFE-001"
+        summary: "Registry package with safe versions only"
+        details: "Has newer versions that don't overlap with malicious versions"
+        aliases: []
+        affected_versions: ["2.0.0", "3.0.0"]  # No overlap with malicious 1.0.0, 1.1.0
+        database_specific: {}
+        published_at: "2024-09-29T05:30:00Z"
+        modified_at: "2024-09-29T05:30:00Z"
+
+      - name: "safe-old-versions"
+        version: "1.5.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/safe-old-versions@1.5.0"
+        advisory_id: "REGISTRY-SAFE-002"
+        summary: "Registry package with newer safe versions"
+        details: "Registry has newer versions, malicious targets older versions"
+        aliases: []
+        affected_versions: ["1.5.0", "2.0.0"]  # No overlap with malicious 0.5.0, 0.6.0
+        database_specific: {}
+        published_at: "2024-09-29T05:45:00Z"
+        modified_at: "2024-09-29T05:45:00Z"
+
+      # Extra registry package (not malicious at all)
+      - name: "clean-registry-pkg"
+        version: "4.0.0"
+        ecosystem: "npm"
+        package_url: "pkg:npm/clean-registry-pkg@4.0.0"
+        advisory_id: "REGISTRY-CLEAN-001"
+        summary: "Clean package only in registry"
+        details: "This package exists only in registry, not in malicious feed"
+        aliases: []
+        affected_versions: ["4.0.0"]
+        database_specific: {}
+        published_at: "2024-09-29T05:00:00Z"
+        modified_at: "2024-09-29T05:00:00Z"
+
+# Memory storage for fast testing
+storage:
+  type: memory
+  config:
+    clear_on_init: true
+
+# Null notifier (no actual notifications)
+notification_service:
+  enabled: true
+  type: "null"
+  config: {}
+
+# Disable scheduler during tests
+scheduler:
+  enabled: false
+
+# Test-specific settings
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
