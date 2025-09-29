@@ -419,6 +419,41 @@ tests/
     └── test_scanner_integration.py
 ```
 
+### Integration Test Best Practices
+
+**Configuration Management:**
+- **Use `test_config` fixture**: Never repeat `ConfigLoader(config_file=test_config_path).load()` in tests
+- **Leverage `config.tests.yaml`**: Use dedicated test configuration with memory-based providers
+- **Avoid local config loading**: Integration tests should use centralized fixtures
+
+**Fixture Strategy:**
+- **Use `conftest.py` fixtures**: Prefer centralized fixtures over local test data creation
+- **Memory providers**: Use `memory_feed_with_packages`, `null_registry_with_packages` for fast testing
+- **Consolidated test data**: Use `test_malicious_packages` and derived fixtures (`sample_malicious_package`, `sample_npm_malicious_package`) for consistency
+- **No fixture duplication**: Avoid creating duplicate fixtures in individual test files
+
+**Example Integration Test Pattern:**
+```python
+@pytest.mark.integration
+class TestServiceIntegration:
+    """Integration tests following best practices."""
+    
+    def test_service_with_memory_providers(self, test_config, test_malicious_packages):
+        """Test using centralized fixtures."""
+        # Use test_config instead of loading configuration manually
+        service_factory = ServiceFactory(test_config)
+        
+        # Use centralized test data instead of creating local packages
+        packages_feed = service_factory.create_packages_feed()
+        # Test implementation...
+        
+    def test_another_service(self, test_config, memory_feed_with_packages):
+        """Test with pre-configured memory providers."""
+        # Memory providers are ready to use with test data
+        results = await memory_feed_with_packages.fetch_malicious_packages()
+        assert len(results) == 3  # From test_malicious_packages
+```
+
 ## 🗄️ Database Schema (ERD)
 
 The application uses a normalized SQLite database schema with the following entities and relationships:

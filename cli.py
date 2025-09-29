@@ -128,8 +128,7 @@ class SecurityScannerCLI:
                     'blocking package',
                     'successfully blocked',
                     'failed to block',
-                    'blocking packages in batch',
-                    'critical match found'  # Suppress "Critical match found" warnings during CLI operations
+                    'blocking packages in batch'
                 ]
                 
                 # Check if this is a message we want to suppress
@@ -291,7 +290,7 @@ class SecurityScannerCLI:
                 return False
             
             # Step 1: Get malicious packages from feed
-            self.console.print("Step 1: Fetching malicious packages from OSV feed...", style="yellow")
+            self.console.print("Step 1: Fetching malicious packages from the Malicious packages feed...", style="yellow")
             
             malicious_packages = []
             with Progress(
@@ -300,7 +299,7 @@ class SecurityScannerCLI:
                 console=self.console,
                 transient=False
             ) as progress:
-                fetch_task = progress.add_task("Fetching malicious packages from OSV feed...", total=None)
+                fetch_task = progress.add_task("Fetching malicious packages from the Malicious packages feed...", total=None)
                 
                 # Fetch packages from the feed
                 fetch_result = await self.app.fetch_packages_feed_data(ecosystem, limit or 1000, hours)
@@ -425,23 +424,23 @@ class SecurityScannerCLI:
                 for match in found_matches:
                     pkg = match['package']
                     self.console.print(f"\n❌ {pkg.name}", style="bold red")
-                    self.console.print(f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}")
-                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(match[field_names['all_versions_field']])}")
-                    self.console.print(f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
+                    self.console.print(f"   📦\tMalicious versions: {', '.join(match['malicious_versions'])}")
+                    self.console.print(f"   🏗️\t{registry_name} versions: {', '.join(match[field_names['all_versions_field']])}")
+                    self.console.print(f"   ⚠️\tMATCHING VERSIONS: {', '.join(match['matching_versions'])}", style="bold red")
                     if hasattr(pkg, 'package_url'):
-                        self.console.print(f"   🔗 Package URL: {pkg.package_url}")
+                        self.console.print(f"   🔗\tPackage URL: {pkg.package_url}")
             
             if safe_packages:
                 self.console.print(f"\n⚠️ {len(safe_packages)} packages found but with different versions:", style="yellow")
                 
                 for safe in safe_packages:
                     pkg = safe['package']
-                    self.console.print(f"\n🟡 {pkg.name}")
-                    self.console.print(f"   📦 Malicious versions: {', '.join(safe['malicious_versions'])}")
-                    self.console.print(f"   🏗️ {registry_name} versions: {', '.join(safe[field_names['versions_field']])} ✅")
+                    self.console.print(f"\n🟡 {pkg.name}", style="bright_green")
+                    self.console.print(f"   📦\tMalicious versions: {', '.join(safe['malicious_versions'])}")
+                    self.console.print(f"   🏗️\t{registry_name} versions: {', '.join(safe[field_names['versions_field']])}")
             
             if not_found_count > 0:
-                self.console.print(f"\n✅ {not_found_count} malicious packages not found in {registry_name}", style="green")
+                self.console.print(f"\n🟢 {not_found_count} malicious packages not found in {registry_name}", style="green")
             
             if errors:
                 self.console.print(f"\n⚠️ {len(errors)} packages had search errors (timeouts/network issues):", style="yellow")

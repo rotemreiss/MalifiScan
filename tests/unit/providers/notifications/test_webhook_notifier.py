@@ -207,7 +207,7 @@ class TestWebhookNotifier:
             assert payload['level'] == "critical"
             assert payload['color'] == "#d32f2f"  # Red for critical
             assert len(payload['affected_packages']) == 1
-            assert payload['affected_packages'][0]['name'] == 'test-package'
+            assert payload['affected_packages'][0]['name'] == 'test-critical-npm'  # sample_npm_malicious_package
             
             # Verify registry information is included
             assert 'registry' in payload

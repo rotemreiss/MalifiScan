@@ -12,12 +12,10 @@ class TestMultiEcosystemIntegration:
     """Integration tests for multi-ecosystem functionality."""
     
     @pytest.fixture
-    def security_analysis_usecase(self):
+    def security_analysis_usecase(self, test_config):
         """Create security analysis use case with real services."""
-        config = ConfigLoader().load()
-        
         # Use factory to create real services with dependency injection
-        service_factory = ServiceFactory(config)
+        service_factory = ServiceFactory(test_config)
         
         packages_feed = service_factory.create_packages_feed()
         packages_registry = service_factory.create_packages_registry()
@@ -33,10 +31,9 @@ class TestMultiEcosystemIntegration:
     
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_osv_feed_ecosystem_discovery(self):
+    async def test_osv_feed_ecosystem_discovery(self, test_config):
         """Test OSV feed can discover available ecosystems."""
-        config = ConfigLoader().load()
-        service_factory = ServiceFactory(config)
+        service_factory = ServiceFactory(test_config)
         
         packages_feed = service_factory.create_packages_feed()
         
@@ -53,10 +50,9 @@ class TestMultiEcosystemIntegration:
     
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_jfrog_registry_ecosystem_support(self):
+    async def test_jfrog_registry_ecosystem_support(self, test_config):
         """Test JFrog registry multi-ecosystem support methods."""
-        config = ConfigLoader().load()
-        service_factory = ServiceFactory(config)
+        service_factory = ServiceFactory(test_config)
         
         packages_registry = service_factory.create_packages_registry()
         
@@ -130,10 +126,9 @@ class TestMultiEcosystemIntegration:
     
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_jfrog_repository_discovery_by_ecosystem(self):
+    async def test_jfrog_repository_discovery_by_ecosystem(self, test_config):
         """Test JFrog repository discovery for specific ecosystems."""
-        config = ConfigLoader().load()
-        service_factory = ServiceFactory(config)
+        service_factory = ServiceFactory(test_config)
         
         packages_registry = service_factory.create_packages_registry()
         

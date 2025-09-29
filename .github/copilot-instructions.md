@@ -24,7 +24,9 @@
 - **Import pattern**: Use absolute imports from project root (`from src.module import Class`)
 - Use real entities and avoid excessive mocking; prefer interface-based testing
 - Coverage: Minimum 90% line coverage required (`pytest --cov=src --cov-fail-under=90`)
-- Use `conftest.py` for shared fixtures
+- **Centralized fixtures**: Use fixtures from `conftest.py` for consistency and maintainability
+- **Configuration loading**: Use `test_config` fixture instead of repeating `ConfigLoader(config_file=test_config_path).load()`
+- **Test data**: Use consolidated fixtures like `test_malicious_packages` with derived convenience fixtures
 
 ## 📦 Configuration & Storage
 - Main config: `config.yaml` (controls provider types, storage, scheduler, etc.)

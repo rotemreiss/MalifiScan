@@ -11,24 +11,42 @@ logger = logging.getLogger(__name__)
 
 
 class NullRegistry(PackagesRegistryService):
-    """Null registry service that does nothing."""
+    """Null registry service that does nothing or packages for testing."""
     
-    def __init__(self):
-        """Initialize null registry."""
+    def __init__(self, packages: List[MaliciousPackage] = None):
+        """
+        Initialize null registry.
+        
+        Args:
+            packages: Optional list of packages as existing in registry for testing
+        """
         self.name = "NullRegistry"
+        self._packages = packages or []
     
     async def check_existing_packages(self, packages: List[MaliciousPackage]) -> List[MaliciousPackage]:
         """
-        Check existing packages (no-op).
+        Check existing packages (returns matched_packages packages if any, otherwise empty list).
         
         Args:
             packages: List of packages to check
             
         Returns:
-            Empty list (no packages are considered existing)
+            List of packages that exist in memory registry (or empty list)
         """
-        logger.debug(f"NullRegistry: Would check {len(packages)} packages (registry disabled)")
-        return []
+        if self._packages:
+            # Find matching packages by name and ecosystem
+            existing = []
+            for package in packages:
+                for matched_packages in self._packages:
+                    if (package.name.lower() == matched_packages.name.lower() and 
+                        package.ecosystem.lower() == matched_packages.ecosystem.lower()):
+                        existing.append(matched_packages)
+                        break
+            logger.debug(f"NullRegistry: Found {len(existing)} existing packages out of {len(packages)} checked")
+            return existing
+        else:
+            logger.debug(f"NullRegistry: Would check {len(packages)} packages (registry disabled)")
+            return []
     
     async def block_packages(self, packages: List[MaliciousPackage]) -> List[str]:
         """
@@ -71,17 +89,38 @@ class NullRegistry(PackagesRegistryService):
     
     async def search_packages(self, package_name: str, ecosystem: str) -> List[dict]:
         """
-        Search for packages (no-op).
+        Search for packages (returns matched packages if any, otherwise empty list).
         
         Args:
             package_name: Name of package to search for
             ecosystem: Package ecosystem
             
         Returns:
-            Empty list (no packages found)
+            List of matching packages (or empty list)
         """
-        logger.debug(f"NullRegistry: Would search for {package_name} in {ecosystem} (registry disabled)")
-        return []
+        if self._packages:
+            # Find matching packages
+            matches = []
+            for package in self._packages:
+                if (package.name.lower() == package_name.lower() and 
+                    package.ecosystem.lower() == ecosystem.lower()):
+                    # Convert to registry search result format
+                    match_dict = {
+                        "name": package.name,
+                        "ecosystem": package.ecosystem,
+                        "version": package.version,  # Individual version for CLI display
+                        "versions": package.affected_versions,  # All versions for analysis
+                        "registry_url": f"pkg:{ecosystem}/{package_name}",
+                        "path": f"null-registry/{package.name}",
+                        "size": 0,
+                        "modified": "2024-09-29T06:00:00Z"
+                    }
+                    matches.append(match_dict)
+            logger.debug(f"NullRegistry: Found {len(matches)} packages for {package_name} in {ecosystem}")
+            return matches
+        else:
+            logger.debug(f"NullRegistry: Would search for {package_name} in {ecosystem} (registry disabled)")
+            return []
     
     async def is_package_blocked(self, package: MaliciousPackage) -> bool:
         """
@@ -103,7 +142,7 @@ class NullRegistry(PackagesRegistryService):
         Returns:
             Registry name
         """
-        return "Null Registry (Disabled)"
+        return "Null Registry"
     
     async def discover_repositories_by_ecosystem(self, ecosystem: str) -> List[str]:
         """
@@ -135,4 +174,6 @@ class NullRegistry(PackagesRegistryService):
         return True
     
     def __str__(self) -> str:
+        if self._packages:
+            return f"NullRegistry(count: {len(self._packages)} packages)"
         return "NullRegistry(disabled)"

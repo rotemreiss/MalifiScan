@@ -1,0 +1,91 @@
+# Test Configuration for Malifiscan Security Scanner
+# This configuration uses memory-based providers for fast, isolated testing
+# without external dependencies or side effects
+
+environment: test
+debug: false
+
+# Use memory-based providers for testing isolation
+packages_feed:
+  enabled: true
+  type: memory
+  config:
+    packages: []  # Will be populated by test fixtures
+    timeout_seconds: 5
+    max_retries: 1
+    retry_delay: 0.1
+
+packages_registry:
+  enabled: true
+  type: "null"  # Uses NullRegistry for testing
+  config:
+    packages: []  # Will be populated by test fixtures
+    timeout_seconds: 5
+    max_retries: 1
+    retry_delay: 0.1
+
+# Use memory storage for fast test execution
+storage:
+  type: memory
+  config:
+    max_scan_results: 100
+    clear_on_init: true
+
+# Use null notifier to avoid external calls during testing
+notification_service:
+  enabled: true
+  type: "null"
+  config: {}
+
+# Disable scheduler during tests
+scheduler:
+  enabled: false
+  interval_minutes: 60
+  auto_start: false
+
+# Test-friendly logging configuration
+logging:
+  level: "WARNING"  # Reduce noise during tests
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - type: console
+      level: "WARNING"
+  # No file logging during tests to avoid file system pollution
+
+# Test database configuration (if database storage is needed)
+database:
+  url: "sqlite:///:memory:"  # In-memory database for tests
+  echo: false  # Don't log SQL queries during tests
+  pool_size: 1
+  max_overflow: 0
+
+# Security settings for tests
+security:
+  max_package_name_length: 100
+  max_version_length: 50
+  allowed_ecosystems: ["npm", "PyPI", "Maven", "Go", "NuGet", "RubyGems"]
+  
+# Performance settings optimized for testing
+performance:
+  max_concurrent_requests: 2  # Lower concurrency for stable tests
+  request_timeout: 5
+  batch_size: 10
+  
+# Test-specific feature flags
+features:
+  enable_caching: false  # Disable caching for predictable test results
+  enable_metrics: false  # Disable metrics collection during tests
+  enable_rate_limiting: false  # Disable rate limiting for faster tests
+
+# JFrog configuration (for JFrog-specific tests, using environment variables)
+# These will be overridden by actual credentials in JFrog-specific test configs
+jfrog_base_url: "https://test.jfrog.example.com"
+jfrog_username: "test-user"  
+jfrog_password: "test-password"
+jfrog_api_key: "test-api-key"
+
+# OSV configuration (minimal for OSV-specific tests)
+osv:
+  bucket_name: "test-vulnerabilities"
+  timeout_seconds: 5
+  max_retries: 1

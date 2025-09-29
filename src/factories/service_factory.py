@@ -10,7 +10,7 @@ from src.core.interfaces import (
     NotificationService,
     StorageService
 )
-from src.providers.feeds import OSVFeed
+from src.providers.feeds import OSVFeed, MemoryFeed
 from src.providers.registries import JFrogRegistry
 from src.providers.notifications import CompositeNotifier, MSTeamsNotifier, WebhookNotifier
 from src.providers.storage import FileStorage, MemoryStorage, DatabaseStorage
@@ -57,6 +57,11 @@ class ServiceFactory:
                     max_retries=self.config.packages_feed.config.get("max_retries", 3),
                     retry_delay=self.config.packages_feed.config.get("retry_delay", 1.0)
                 )
+            elif self.config.packages_feed.type.lower() == "memory":
+                # Memory feed for testing - convert YAML packages to MaliciousPackage objects
+                packages_data = self.config.packages_feed.config.get("packages", [])
+                packages = self._convert_packages_data_to_entities(packages_data)
+                return MemoryFeed(packages=packages)
             else:
                 raise ServiceFactoryError(f"Unknown packages feed type: {self.config.packages_feed.type}")
         
@@ -81,7 +86,10 @@ class ServiceFactory:
             return self._create_null_registry()
         
         try:
-            if self.config.packages_registry.type.lower() == "jfrog":
+            if self.config.packages_registry.type.lower() == "null":
+                logger.info("Creating null packages registry for testing")
+                return self._create_null_registry()
+            elif self.config.packages_registry.type.lower() == "jfrog":
                 if not self.config.jfrog_base_url:
                     raise ServiceFactoryError("JFrog base URL not configured")
                 
@@ -178,9 +186,70 @@ class ServiceFactory:
         return NullNotifier()
     
     def _create_null_registry(self) -> PackagesRegistryService:
-        """Create a null registry that does nothing (for disabled registry)."""
+        """Create a null registry with optional packages from configuration."""
         from ..providers.registries.null_registry import NullRegistry
-        return NullRegistry()
+        
+        # Check if packages are configured for the null registry
+        packages_data = self.config.packages_registry.config.get("packages", [])
+        packages = self._convert_packages_data_to_entities(packages_data)
+        return NullRegistry(packages=packages)
+    
+    def _convert_packages_data_to_entities(self, packages_data: list) -> list:
+        """Convert packages data to MaliciousPackage entities.
+        
+        Supports both cases:
+        - YAML dictionaries (from config files)
+        - Already-created MaliciousPackage objects (from test fixtures)
+        
+        Args:
+            packages_data: List of package data (dicts or MaliciousPackage objects)
+            
+        Returns:
+            List of MaliciousPackage objects
+        """
+        from ..core.entities import MaliciousPackage
+        from datetime import datetime, timezone
+        
+        packages = []
+        for package_data in packages_data:
+            # Case 1: Already a MaliciousPackage object (from test fixtures)
+            if isinstance(package_data, MaliciousPackage):
+                packages.append(package_data)
+            # Case 2: Dictionary from YAML configuration
+            elif isinstance(package_data, dict):
+                # Convert string dates to datetime objects if needed
+                published_at = package_data.get("published_at")
+                if isinstance(published_at, str):
+                    published_at = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                elif published_at is None:
+                    published_at = datetime.now(timezone.utc)
+                
+                modified_at = package_data.get("modified_at")
+                if isinstance(modified_at, str):
+                    modified_at = datetime.fromisoformat(modified_at.replace('Z', '+00:00'))
+                elif modified_at is None:
+                    modified_at = datetime.now(timezone.utc)
+                
+                # Create MaliciousPackage from dictionary
+                package = MaliciousPackage(
+                    name=package_data.get("name", ""),
+                    version=package_data.get("version", ""),
+                    ecosystem=package_data.get("ecosystem", ""),
+                    package_url=package_data.get("package_url", ""),
+                    advisory_id=package_data.get("advisory_id", ""),
+                    summary=package_data.get("summary", ""),
+                    details=package_data.get("details", ""),
+                    aliases=package_data.get("aliases", []),
+                    affected_versions=package_data.get("affected_versions", []),
+                    database_specific=package_data.get("database_specific", {}),
+                    published_at=published_at,
+                    modified_at=modified_at
+                )
+                packages.append(package)
+            else:
+                logger.warning(f"Unknown package data type: {type(package_data)}")
+        
+        return packages
     
     def create_storage_service(self) -> StorageService:
         """

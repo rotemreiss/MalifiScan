@@ -12,6 +12,7 @@ from ..entities.notification_event import NotificationEvent, NotificationChannel
 from ..interfaces.packages_feed import PackagesFeed
 from ..interfaces.packages_registry_service import PackagesRegistryService
 from ..interfaces.storage_service import StorageService
+from ..utils.version_matcher import VersionMatcher
 
 
 class SecurityAnalysisUseCase:
@@ -167,28 +168,25 @@ class SecurityAnalysisUseCase:
                     registry_results = await self.registry_service.search_packages(malicious_pkg.name, malicious_pkg.ecosystem)
                     
                     if registry_results:
-                        # Check if any versions match
+                        # Extract versions from registry results
                         registry_versions = [result.get('version', '') for result in registry_results if result.get('version')]
                         malicious_versions = malicious_pkg.affected_versions if hasattr(malicious_pkg, 'affected_versions') else [malicious_pkg.version] if malicious_pkg.version else []
                         
-                        # Check for version matches
-                        version_matches = []
-                        for registry_version in registry_versions:
-                            if registry_version and registry_version in malicious_versions:
-                                version_matches.append(registry_version)
+                        # Use unified version matcher for consistent logic
+                        matching_versions = VersionMatcher.get_matching_versions(registry_versions, malicious_versions)
                         
                         # Create registry package match
                         package_match = match_builder.build_match(
                             package=malicious_pkg,
                             registry_results=registry_results,
-                            matching_versions=version_matches,
+                            matching_versions=matching_versions,
                             all_registry_versions=registry_versions,
                             malicious_versions=malicious_versions
                         )
                         
-                        if version_matches:
+                        # Use unified logic to determine if critical
+                        if VersionMatcher.is_critical_match(registry_versions, malicious_versions):
                             found_matches.append(package_match.to_match_dict())
-                            self.logger.warning(f"Critical match found: {malicious_pkg.name} ({malicious_pkg.ecosystem}) versions {version_matches}")
                         else:
                             safe_packages.append(package_match.to_safe_dict())
                     

@@ -51,7 +51,7 @@ class ProactiveSecurityUseCase:
             
             # Step 1: Fetch recent malicious packages
             if progress_callback:
-                progress_callback("Fetching malicious packages from OSV feed...", 0, 100)
+                progress_callback("Fetching malicious packages from the Malicious packages feed...", 0, 100)
             
             malicious_packages = await self.packages_feed.fetch_malicious_packages(
                 max_packages=limit,

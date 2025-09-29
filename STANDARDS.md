@@ -551,6 +551,34 @@ All integration test levels must include:
 - **CI Exclusion**: Use `@pytest.mark.integration` marker
 - **Environment Skipping**: Honor `SKIP_INTEGRATION_TESTS` variable
 
+#### Integration Test Best Practices
+
+**Configuration Management:**
+- **Use `test_config` fixture**: Never repeat `ConfigLoader(config_file=test_config_path).load()` in tests
+- **Leverage `config.tests.yaml`**: Use dedicated test configuration for memory-based providers
+- **Avoid local config loading**: Integration tests should use centralized fixtures
+
+**Fixture Management:**
+- **Use `conftest.py` fixtures**: Prefer centralized fixtures over local test data creation
+- **Memory providers**: Use `memory_feed_with_packages`, `null_registry_with_packages` for fast testing
+- **Consolidated test data**: Use `test_malicious_packages` and derived fixtures for consistency
+- **No duplication**: Avoid creating duplicate fixtures in individual test files
+
+**Example Integration Test Pattern:**
+```python
+@pytest.mark.integration
+class TestServiceIntegration:
+    """Integration tests using centralized fixtures."""
+    
+    def test_service_functionality(self, test_config, test_malicious_packages):
+        """Test with centralized configuration and test data."""
+        # Use test_config instead of ConfigLoader(...)
+        service_factory = ServiceFactory(test_config)
+        
+        # Use test_malicious_packages instead of creating local data
+        assert len(test_malicious_packages) == 3
+```
+
 #### Integration Test Structure
 
 Integration tests are organized in the `tests/integration/` directory:
@@ -759,6 +787,53 @@ class Test[Provider]Integration:
         logging.info("✓ [Provider] health check passed")
     
     # Additional test methods...
+```
+
+### Fixture Management Standards
+
+**Centralized Fixture Architecture:**
+- **Master fixtures**: `test_malicious_packages` provides comprehensive test data for 3 ecosystems (npm, npm, PyPI)
+- **Derived fixtures**: `sample_malicious_package` (PyPI), `sample_npm_malicious_package` (npm) derive from master
+- **Configuration fixtures**: `test_config_path` → `test_config` (loaded configuration object)
+- **Provider fixtures**: `memory_feed_with_packages`, `null_registry_with_packages` use consolidated data
+
+**Fixture Hierarchy:**
+```python
+test_malicious_packages          # Master fixture with 3 packages
+├── sample_malicious_package     # Points to PyPI package (index 2)
+├── sample_npm_malicious_package # Points to npm package (index 0)  
+├── memory_feed_with_packages    # Uses test_malicious_packages
+└── null_registry_with_packages  # Uses test_registry_packages
+
+test_config_path                 # Path to config.tests.yaml
+└── test_config                  # Loaded configuration object
+```
+
+**Fixture Usage Rules:**
+- **No duplication**: Never create identical fixtures in multiple files
+- **Use conftest.py**: All shared fixtures must be in `conftest.py`
+- **DRY principle**: Use `test_config` instead of repeating `ConfigLoader(...).load()`
+- **Consistent data**: Use `test_malicious_packages` for predictable test scenarios
+- **Memory providers**: Use memory-based fixtures for integration tests to avoid external dependencies
+
+**Integration Test Configuration Pattern:**
+```python
+# ❌ Wrong - Repeating configuration loading
+def test_service(self, test_config_path):
+    config = ConfigLoader(config_file=test_config_path).load()
+    service_factory = ServiceFactory(config)
+
+# ✅ Correct - Using test_config fixture
+def test_service(self, test_config):
+    service_factory = ServiceFactory(test_config)
+
+# ❌ Wrong - Creating local test data
+def test_with_packages(self):
+    packages = [MaliciousPackage(...), MaliciousPackage(...)]
+    
+# ✅ Correct - Using centralized fixtures
+def test_with_packages(self, test_malicious_packages):
+    # Use consolidated test data
 ```
 
 ### Test Coverage Requirements

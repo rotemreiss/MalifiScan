@@ -685,6 +685,41 @@ class JFrogRegistry(PackagesRegistryService):
         """
         blocked_packages = await self.check_existing_packages([package])
         return len(blocked_packages) > 0
+
+    def _extract_version_from_filename(self, filename: str, package_name: str, ecosystem: str) -> str:
+        """
+        Extract version from package filename based on ecosystem-specific patterns.
+        
+        Args:
+            filename: The filename to extract version from
+            package_name: The package name being searched for
+            ecosystem: The package ecosystem (npm, PyPI, etc.)
+            
+        Returns:
+            Extracted version string, or empty string if no version found
+        """
+        if ecosystem.lower() == "npm":
+            import re
+            version_patterns = [
+                # Match exact package name followed by version (for exact matches)
+                rf'{re.escape(package_name)}-([0-9]+\.[0-9]+\.[0-9]+[^.]*)\.json',
+                # Match any package name ending with searched name followed by version
+                rf'.*{re.escape(package_name)}.*?-([0-9]+\.[0-9]+\.[0-9]+[^.]*)\.json',
+                # Match semantic version in filename, excluding .json suffix
+                r'-([0-9]+\.[0-9]+\.[0-9]+[^./]*)\.json',
+                # Fallback: any semantic version pattern but clean .json suffix
+                r'([0-9]+\.[0-9]+\.[0-9]+[^/]*)',
+            ]
+            for pattern in version_patterns:
+                match = re.search(pattern, filename)
+                if match:
+                    version = match.group(1)
+                    # Clean any remaining .json suffix from version
+                    if version.endswith('.json'):
+                        version = version[:-5]
+                    return version
+        
+        return ""
     
     async def search_packages(self, package_name: str, ecosystem: str) -> List[Dict[str, Any]]:
         """
@@ -745,17 +780,8 @@ class JFrogRegistry(PackagesRegistryService):
                         path = item.get("path", "")
                         
                         if ecosystem.lower() == "npm":
-                            # npm packages often have version files like: package-name-version.json
-                            import re
-                            version_patterns = [
-                                rf'{re.escape(package_name)}-([0-9]+\.[0-9]+\.[0-9]+[^.]*)\.json',  # package-version.json
-                                r'([0-9]+\.[0-9]+\.[0-9]+[^/]*)',  # any semantic version
-                            ]
-                            for pattern in version_patterns:
-                                match = re.search(pattern, name)
-                                if match:
-                                    version = match.group(1)
-                                    break
+                            # Extract version using dedicated method
+                            version = self._extract_version_from_filename(name, package_name, ecosystem)
                         
                         result_item = {
                             "name": name,

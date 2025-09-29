@@ -16,6 +16,7 @@ from ..entities.malicious_package import MaliciousPackage
 from ..entities.registry_package_match import RegistryPackageMatchBuilder
 from ..interfaces.storage_service import StorageService
 from ..interfaces.packages_registry_service import PackagesRegistryService
+from ..utils.version_matcher import VersionMatcher
 
 
 @dataclass
@@ -191,7 +192,7 @@ class ScanResultsManager:
         safe_packages = []
         
         # Get registry name for dynamic field naming
-        registry_name = await self.registry_service.get_registry_name()
+        registry_name = self.registry_service.get_registry_name()
         match_builder = RegistryPackageMatchBuilder(registry_name)
         
         # For each finding, create the match information
@@ -199,8 +200,8 @@ class ScanResultsManager:
             # Create registry package match from finding
             package_match = match_builder.build_from_finding(finding)
             
-            # Determine if this is a critical match or safe package
-            if finding.version and finding.version in (finding.affected_versions or []):
+            # Use unified logic to determine if this is a critical match or safe package
+            if VersionMatcher.is_finding_critical(finding):
                 found_matches.append(package_match.to_match_dict())
             else:
                 safe_packages.append(package_match.to_safe_dict())

@@ -9,41 +9,66 @@ from src.core.entities import MaliciousPackage, ScanResult, ScanStatus, Notifica
 
 
 @pytest.fixture
-def sample_malicious_package():
-    """Create a sample malicious package for testing."""
-    return MaliciousPackage(
-        name="malicious-pkg",
-        version="1.0.0",
-        ecosystem="PyPI",
-        package_url="pkg:pypi/malicious-pkg@1.0.0",
-        advisory_id="OSV-2023-0001",
-        summary="Malicious package with backdoor",
-        details="This package contains a backdoor that steals credentials",
-        aliases=["CVE-2023-1234"],
-        affected_versions=["1.0.0", "1.0.1"],
-        database_specific={"severity": "HIGH"},
-        published_at=datetime(2023, 1, 1, 12, 0, 0),
-        modified_at=datetime(2023, 1, 2, 12, 0, 0)
-    )
+def test_malicious_packages():
+    """Create a list of test malicious packages with various ecosystems."""
+    return [
+        MaliciousPackage(
+            name="test-critical-npm",
+            version="1.0.0",
+            ecosystem="npm",
+            package_url="pkg:npm/test-critical-npm@1.0.0",
+            advisory_id="TEST-CRITICAL-001",
+            summary="Critical test package",
+            details="Critical vulnerability for testing",
+            aliases=["CVE-2024-CRIT-TEST"],
+            affected_versions=["1.0.0", "1.1.0"],
+            database_specific={"severity": "CRITICAL"},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        ),
+        MaliciousPackage(
+            name="test-safe-npm",
+            version="2.0.0",
+            ecosystem="npm", 
+            package_url="pkg:npm/test-safe-npm@2.0.0",
+            advisory_id="TEST-SAFE-001",
+            summary="Safe test package",
+            details="Non-matching versions for testing",
+            aliases=["CVE-2024-SAFE-TEST"],
+            affected_versions=["2.0.0"],
+            database_specific={"severity": "LOW"},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        ),
+        MaliciousPackage(
+            name="test-pypi-pkg",
+            version="3.0.0",
+            ecosystem="PyPI",
+            package_url="pkg:pypi/test-pypi-pkg@3.0.0", 
+            advisory_id="TEST-PYPI-001",
+            summary="PyPI test package",
+            details="PyPI ecosystem test package",
+            aliases=["CVE-2024-PYPI-TEST"],
+            affected_versions=["3.0.0", "3.1.0"],
+            database_specific={"severity": "HIGH"},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        )
+    ]
 
 
 @pytest.fixture
-def sample_npm_malicious_package():
-    """Create a sample npm malicious package for testing."""
-    return MaliciousPackage(
-        name="test-package",
-        version="1.0.0",
-        ecosystem="npm",
-        package_url="https://npmjs.com/package/test-package",
-        advisory_id="TEST-2024-001",
-        summary="Test malicious package",
-        details="Test vulnerability details",
-        aliases=["CVE-2024-TEST"],
-        affected_versions=["1.0.0"],
-        database_specific={"severity": "HIGH"},
-        published_at=datetime.now(timezone.utc),
-        modified_at=datetime.now(timezone.utc)
-    )
+def sample_malicious_package(test_malicious_packages):
+    """Get a PyPI malicious package for single-package tests."""
+    # Return the PyPI package (index 2)
+    return test_malicious_packages[2]
+
+
+@pytest.fixture 
+def sample_npm_malicious_package(test_malicious_packages):
+    """Get an npm malicious package for npm-specific tests."""
+    # Return the first npm package (index 0)
+    return test_malicious_packages[0]
 
 
 @pytest.fixture
@@ -236,3 +261,99 @@ class AsyncIterator:
             return next(self.items)
         except StopIteration:
             raise StopAsyncIteration
+
+
+@pytest.fixture
+def test_config_path():
+    """Get path to test configuration file."""
+    from pathlib import Path
+    config_path = Path(__file__).parent / "config.tests.yaml"
+    return str(config_path)
+
+
+@pytest.fixture
+def test_config(test_config_path):
+    """Load test configuration for integration tests."""
+    from src.config.config_loader import ConfigLoader
+    config_loader = ConfigLoader(config_file=test_config_path)
+    return config_loader.load()
+
+
+@pytest.fixture
+def memory_feed_with_packages(test_malicious_packages):
+    """Create a memory feed with test packages."""
+    from src.providers.feeds.memory_feed import MemoryFeed
+    return MemoryFeed(packages=test_malicious_packages)
+
+
+@pytest.fixture
+def null_registry_with_packages(test_registry_packages):
+    """Create a null registry with simulated test packages."""
+    from src.providers.registries.null_registry import NullRegistry
+    return NullRegistry(packages=test_registry_packages)
+
+
+@pytest.fixture
+def memory_storage():
+    """Create a memory storage instance for testing."""
+    from src.providers.storage.memory_storage import MemoryStorage
+    return MemoryStorage(clear_on_init=True)
+
+
+@pytest.fixture
+def null_notifier():
+    """Create a null notifier for testing."""
+    from src.providers.notifications.null_notifier import NullNotifier
+    return NullNotifier()
+
+
+@pytest.fixture
+def test_registry_packages():
+    """Create a list of simulated registry packages for testing."""
+    return [
+        # This package has overlapping versions with test-critical-npm
+        MaliciousPackage(
+            name="test-critical-npm",
+            version="1.0.0",
+            ecosystem="npm",
+            package_url="pkg:npm/test-critical-npm@1.0.0",
+            advisory_id="REGISTRY-SIM-001",
+            summary="Simulated registry package",
+            details="Simulated package in registry",
+            aliases=[],
+            affected_versions=["1.0.0", "1.2.0", "1.3.0"],  # Contains overlap with malicious
+            database_specific={},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        ),
+        # This package has NO overlapping versions with test-safe-npm
+        MaliciousPackage(
+            name="test-safe-npm",
+            version="2.1.0",
+            ecosystem="npm",
+            package_url="pkg:npm/test-safe-npm@2.1.0", 
+            advisory_id="REGISTRY-SIM-002",
+            summary="Simulated safe registry package",
+            details="Safe simulated package in registry",
+            aliases=[],
+            affected_versions=["2.1.0", "2.2.0"],  # No overlap with malicious versions
+            database_specific={},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        ),
+        # Extra package not in malicious list
+        MaliciousPackage(
+            name="extra-registry-pkg",
+            version="4.0.0",
+            ecosystem="npm",
+            package_url="pkg:npm/extra-registry-pkg@4.0.0",
+            advisory_id="REGISTRY-SIM-003", 
+            summary="Extra simulated registry package",
+            details="Extra package only in registry",
+            aliases=[],
+            affected_versions=["4.0.0"],
+            database_specific={},
+            published_at=datetime.now(timezone.utc),
+            modified_at=datetime.now(timezone.utc)
+        )
+    ]

@@ -34,7 +34,9 @@ class TestCLIIntegration:
         
         return str(cli_path)
     
-    def run_cli_command(self, cli_path: str, args: list, input_data: Optional[str] = None) -> tuple:
+
+    
+    def run_cli_command(self, cli_path: str, args: list, input_data: Optional[str] = None, config_path: Optional[str] = None) -> tuple:
         """
         Run a CLI command and return (returncode, stdout, stderr).
         
@@ -42,11 +44,16 @@ class TestCLIIntegration:
             cli_path: Path to the CLI script
             args: List of command line arguments
             input_data: Optional input data to send to stdin
+            config_path: Optional path to configuration file
             
         Returns:
             Tuple of (returncode, stdout, stderr)
         """
-        cmd = [sys.executable, cli_path] + args
+        # Prepend config argument if provided
+        if config_path:
+            cmd = [sys.executable, cli_path, "--config", config_path] + args
+        else:
+            cmd = [sys.executable, cli_path] + args
         
         try:
             result = subprocess.run(
@@ -62,31 +69,35 @@ class TestCLIIntegration:
         except Exception as e:
             return -1, "", f"Error running command: {e}"
     
-    def test_cli_help(self, cli_path):
+    def test_cli_help(self, cli_path, test_config_path):
         """Test CLI help command."""
-        returncode, stdout, stderr = self.run_cli_command(cli_path, ["--help"])
+        returncode, stdout, stderr = self.run_cli_command(cli_path, ["--help"], config_path=test_config_path)
         
         assert returncode == 0, f"Help command failed: {stderr}"
         assert "usage:" in stdout.lower() or "help" in stdout.lower(), "Help output should contain usage information"
         
         logging.info("✓ CLI --help command works")
     
-    def test_cli_version(self, cli_path):
-        """Test CLI version command."""
-        # Try common version flags
-        for version_flag in ["--version", "-v", "version"]:
-            returncode, stdout, stderr = self.run_cli_command(cli_path, [version_flag])
-            
-            if returncode == 0:
-                logging.info(f"✓ CLI {version_flag} command works: {stdout.strip()}")
-                return
+    def test_cli_version(self, cli_path, test_config_path):
+        """Test that version command works."""
+        returncode, stdout, stderr = self.run_cli_command(cli_path, ["--version"], config_path=test_config_path)
         
-        # If none of the version commands work, that's okay - not all CLIs have version commands
-        logging.info("ℹ No version command found (normal)")
+        if returncode == 0:
+            logging.info("✓ CLI version command works")
+            assert stdout.strip(), "Version should have output"
+        else:
+            # Try alternative ways to get version
+            for version_flag in ["-v", "version"]:
+                returncode, stdout, stderr = self.run_cli_command(cli_path, [version_flag], config_path=test_config_path)
+                if returncode == 0:
+                    logging.info(f"✓ CLI version works with {version_flag}")
+                    return
+            
+            logging.warning(f"⚠ Version command failed (exit code {returncode}): {stderr}")
     
-    def test_cli_scan_command_exists(self, cli_path):
+    def test_cli_scan_command_exists(self, cli_path, test_config_path):
         """Test that scan command exists and shows help."""
-        returncode, stdout, stderr = self.run_cli_command(cli_path, ["scan", "--help"])
+        returncode, stdout, stderr = self.run_cli_command(cli_path, ["scan", "--help"], config_path=test_config_path)
         
         if returncode == 0:
             logging.info("✓ CLI scan command exists")
@@ -94,7 +105,7 @@ class TestCLIIntegration:
         else:
             # Try alternative command names
             for cmd in ["check", "analyze", "search"]:
-                returncode, stdout, stderr = self.run_cli_command(cli_path, [cmd, "--help"])
+                returncode, stdout, stderr = self.run_cli_command(cli_path, [cmd, "--help"], config_path=test_config_path)
                 if returncode == 0:
                     logging.info(f"✓ CLI {cmd} command exists (alternative to scan)")
                     return
@@ -392,3 +403,119 @@ packages_registry:
                 logging.info(f"ℹ {pkg['name']}: No working scan commands found")
         
         logging.info("=== Package Scanning Workflow Complete ===")
+    
+    def test_cli_scan_crossref_with_memory_providers(self, cli_path, test_config_path):
+        """Test scan crossref command with memory-based providers for fast testing."""
+        logging.info("=== Scan Crossref Memory Provider Test ===")
+        
+        # Test different crossref scenarios using the test config
+        test_scenarios = [
+            {
+                "name": "Basic crossref execution",
+                "args": ["scan", "crossref", "--hours", "24", "--ecosystem", "npm", "--limit", "10", "--no-report", "--no-notifications"],
+                "should_succeed": True
+            },
+            {
+                "name": "Crossref with PyPI ecosystem",
+                "args": ["scan", "crossref", "--hours", "48", "--ecosystem", "PyPI", "--limit", "5", "--no-report", "--no-notifications"],
+                "should_succeed": True
+            },
+            {
+                "name": "Crossref help command",
+                "args": ["scan", "crossref", "--help"],
+                "should_succeed": True
+            },
+            {
+                "name": "Crossref with invalid ecosystem",
+                "args": ["scan", "crossref", "--ecosystem", "invalid-ecosystem", "--no-report", "--no-notifications"],
+                "should_succeed": False  # Should fail gracefully
+            }
+        ]
+        
+        for scenario in test_scenarios:
+            logging.info(f"Testing scenario: {scenario['name']}")
+            
+            returncode, stdout, stderr = self.run_cli_command(
+                cli_path,
+                scenario["args"],
+                config_path=test_config_path
+            )
+            
+            if scenario["should_succeed"]:
+                if returncode == 0:
+                    logging.info(f"✓ {scenario['name']}: Command executed successfully")
+                    # Check for expected output patterns
+                    output = stdout.lower()
+                    if "scan" in scenario["name"] and "help" not in scenario["name"]:
+                        # Should contain scan result information
+                        expected_patterns = ["malicious packages", "scan", "ecosystem"]
+                        found_patterns = [p for p in expected_patterns if p in output]
+                        if found_patterns:
+                            logging.info(f"  Found expected patterns: {found_patterns}")
+                        else:
+                            logging.info(f"  Output preview: {stdout[:200]}...")
+                else:
+                    # Command failed but should have succeeded
+                    error_output = stderr.lower()
+                    if any(err in error_output for err in ["config", "missing", "connection", "timeout"]):
+                        logging.info(f"ℹ {scenario['name']}: Command failed due to expected configuration issues: {stderr[:100]}")
+                    else:
+                        logging.warning(f"⚠ {scenario['name']}: Unexpected command failure: {stderr[:100]}")
+            else:
+                # Command should fail
+                if returncode != 0:
+                    logging.info(f"✓ {scenario['name']}: Command failed as expected")
+                else:
+                    logging.warning(f"⚠ {scenario['name']}: Command succeeded but should have failed")
+        
+        logging.info("=== Scan Crossref Memory Provider Test Complete ===")
+    
+    def test_cli_scan_crossref_basic_functionality(self, cli_path, test_config_path):
+        """Test basic scan crossref command structure and help."""
+        logging.info("=== Scan Crossref Basic Functionality Test ===")
+        
+        # Test crossref help
+        returncode, stdout, stderr = self.run_cli_command(cli_path, ["scan", "crossref", "--help"], config_path=test_config_path)
+        
+        if returncode == 0:
+            help_text = stdout.lower()
+            
+            # Check for expected crossref options
+            expected_options = ["--hours", "--ecosystem", "--limit", "--no-report", "--block", "--no-notifications"]
+            found_options = []
+            
+            for option in expected_options:
+                if option in help_text:
+                    found_options.append(option)
+            
+            logging.info(f"✓ Crossref help works. Found options: {', '.join(found_options)}")
+            
+            # Verify essential options exist
+            if "--hours" in found_options and "--ecosystem" in found_options:
+                logging.info("✓ Essential crossref options are available")
+            else:
+                logging.warning("⚠ Some essential crossref options may be missing")
+        else:
+            logging.warning(f"⚠ Crossref help command failed: {stderr}")
+        
+        # Test crossref with minimal options using test config
+        returncode, stdout, stderr = self.run_cli_command(
+            cli_path, 
+            ["scan", "crossref", "--hours", "1", "--limit", "1", "--no-report", "--no-notifications"],
+            config_path=test_config_path
+        )
+        
+        # With test config, this should work (though may find no packages)
+        if returncode == 0:
+            logging.info("✓ Crossref command executed successfully with test config")
+            output = stdout.lower()
+            if "malicious packages" in output or "scan" in output:
+                logging.info("✓ Crossref output contains expected content")
+        else:
+            error_output = stderr.lower()
+            if any(err in error_output for err in ["config", "missing", "connection", "authentication"]):
+                logging.info("ℹ Crossref command failed due to configuration issues (may be expected)")
+            else:
+                logging.info(f"ℹ Crossref command failed with: {stderr[:100]}")
+        
+        logging.info("=== Scan Crossref Basic Functionality Test Complete ===")

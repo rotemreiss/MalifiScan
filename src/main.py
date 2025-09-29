@@ -95,7 +95,14 @@ class SecurityScannerApp:
         try:
             # Load configuration
             self.logger.info("Loading configuration...")
-            config_loader = ConfigLoader(self.config_file, self.env_file, "config.local.yaml")
+            
+            # Only load local config if using the default config file
+            # When user specifies a specific config (like demo), don't override with local config
+            local_config_file = None
+            if self.config_file == "config.yaml":
+                local_config_file = "config.local.yaml"
+            
+            config_loader = ConfigLoader(self.config_file, self.env_file, local_config_file)
             self.config = config_loader.load()
             
             # Setup logging

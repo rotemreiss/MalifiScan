@@ -16,16 +16,13 @@ class TestServiceFactoryIntegration:
     .env → Config → Factory → Provider → External API
     """
     
-    @pytest.fixture(scope="class")
-    def config(self):
+    @pytest.fixture
+    def config(self, test_config):
         """Load configuration for factory integration tests."""
         if os.getenv("SKIP_INTEGRATION_TESTS", "false").lower() == "true":
             pytest.skip("Integration tests disabled via SKIP_INTEGRATION_TESTS")
         
-        config_loader = ConfigLoader()
-        config = config_loader.load()
-        
-        return config
+        return test_config
     
     @pytest_asyncio.fixture
     async def registry_factory(self, config):
