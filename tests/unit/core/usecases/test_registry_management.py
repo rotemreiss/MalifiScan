@@ -1,7 +1,8 @@
 """Test cases for registry management use case."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.core.usecases.registry_management import RegistryManagementUseCase
 
@@ -10,7 +11,8 @@ from src.core.usecases.registry_management import RegistryManagementUseCase
 def mock_registry_service():
     """Mock registry service for testing."""
     service = AsyncMock()
-    service.get_registry_name.return_value = "Test Registry"
+    # get_registry_name is NOT async according to interface
+    service.get_registry_name = MagicMock(return_value="Test Registry")
     return service
 
 
@@ -29,10 +31,10 @@ async def test_search_package_success(registry_usecase, mock_registry_service):
         {"name": "test-package", "version": "1.0.0"}
     ]
     mock_registry_service.is_package_blocked.return_value = False
-    
+
     # Act
     result = await registry_usecase.search_package("test-package", "npm")
-    
+
     # Assert
     assert result["success"] is True
     assert result["package_name"] == "test-package"
@@ -44,14 +46,16 @@ async def test_search_package_success(registry_usecase, mock_registry_service):
 
 
 @pytest.mark.asyncio
-async def test_search_package_registry_unhealthy(registry_usecase, mock_registry_service):
+async def test_search_package_registry_unhealthy(
+    registry_usecase, mock_registry_service
+):
     """Test package search when registry is unhealthy."""
     # Arrange
     mock_registry_service.health_check.return_value = False
-    
+
     # Act
     result = await registry_usecase.search_package("test-package", "npm")
-    
+
     # Assert
     assert result["success"] is False
     assert result["error"] == "Registry is not accessible"
@@ -66,10 +70,10 @@ async def test_block_package_success(registry_usecase, mock_registry_service):
     mock_registry_service.health_check.return_value = True
     mock_registry_service.is_package_blocked.return_value = False
     mock_registry_service.block_package.return_value = True
-    
+
     # Act
     result = await registry_usecase.block_package("evil-package", "npm", "1.0.0")
-    
+
     # Assert
     assert result["success"] is True
     assert "Successfully blocked" in result["message"]
@@ -83,10 +87,10 @@ async def test_block_package_already_blocked(registry_usecase, mock_registry_ser
     # Arrange
     mock_registry_service.health_check.return_value = True
     mock_registry_service.is_package_blocked.return_value = True
-    
+
     # Act
     result = await registry_usecase.block_package("evil-package", "npm", "1.0.0")
-    
+
     # Assert
     assert result["success"] is True
     assert "already blocked" in result["message"]
@@ -101,10 +105,10 @@ async def test_unblock_package_success(registry_usecase, mock_registry_service):
     mock_registry_service.health_check.return_value = True
     mock_registry_service.is_package_blocked.return_value = True
     mock_registry_service.unblock_package.return_value = True
-    
+
     # Act
     result = await registry_usecase.unblock_package("evil-package", "npm", "1.0.0")
-    
+
     # Assert
     assert result["success"] is True
     assert "Successfully unblocked" in result["message"]
@@ -118,10 +122,10 @@ async def test_unblock_package_not_blocked(registry_usecase, mock_registry_servi
     # Arrange
     mock_registry_service.health_check.return_value = True
     mock_registry_service.is_package_blocked.return_value = False
-    
+
     # Act
     result = await registry_usecase.unblock_package("evil-package", "npm", "1.0.0")
-    
+
     # Assert
     assert result["success"] is True
     assert "not currently blocked" in result["message"]
@@ -136,12 +140,12 @@ async def test_list_blocked_packages_success(registry_usecase, mock_registry_ser
     mock_registry_service.health_check.return_value = True
     mock_registry_service.list_blocked_packages.return_value = [
         {"name": "evil-package1", "pattern": "evil-package1/*"},
-        {"name": "evil-package2", "pattern": "evil-package2/*"}
+        {"name": "evil-package2", "pattern": "evil-package2/*"},
     ]
-    
+
     # Act
     result = await registry_usecase.list_blocked_packages("npm")
-    
+
     # Assert
     assert result["success"] is True
     assert result["count"] == 2
@@ -155,10 +159,10 @@ async def test_health_check_success(registry_usecase, mock_registry_service):
     # Arrange
     mock_registry_service.health_check.return_value = True
     mock_registry_service.get_registry_name.return_value = "Test Registry"
-    
+
     # Act
     result = await registry_usecase.health_check()
-    
+
     # Assert
     assert result["success"] is True
     assert result["healthy"] is True
@@ -171,10 +175,10 @@ async def test_exception_handling(registry_usecase, mock_registry_service):
     """Test exception handling in use case methods."""
     # Arrange
     mock_registry_service.health_check.side_effect = Exception("Connection error")
-    
+
     # Act
     result = await registry_usecase.search_package("test-package", "npm")
-    
+
     # Assert
     assert result["success"] is False
     assert "Connection error" in result["error"]

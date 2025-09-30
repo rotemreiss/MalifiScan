@@ -36,10 +36,10 @@ UV provides faster dependency resolution and better development experience.
    ```bash
   git clone <repository-url>
   cd malifiscan
-   
+
    # Initialize UV project
    uv init --no-readme --no-pin-python
-   
+
    # Install all dependencies (including dev dependencies)
    uv sync --dev
    ```
@@ -63,10 +63,10 @@ UV provides faster dependency resolution and better development experience.
    # Create virtual environment
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-   
+
    # Upgrade pip
    pip install --upgrade pip
-   
+
    # Install dependencies
    pip install -r requirements.txt
    ```
@@ -307,7 +307,7 @@ We use a **separated test structure** where unit tests are organized in `tests/u
 ```bash
 # Direct UV commands
 uv run pytest tests/unit/                        # Unit tests only (fast feedback)
-uv run pytest tests/integration/                 # Integration tests only  
+uv run pytest tests/integration/                 # Integration tests only
 uv run pytest tests/                             # All tests
 uv run pytest tests/ -m "not integration"       # All unit tests
 uv run pytest tests/ -m integration             # All integration tests
@@ -379,17 +379,17 @@ from src.core.entities import SomeEntity
 
 class TestMyUseCase:
     """Test suite for MyUseCase."""
-    
+
     @pytest.fixture
     def mock_dependency(self):
         """Mock external dependency."""
         return AsyncMock()
-    
+
     @pytest.fixture
     def use_case(self, mock_dependency):
         """Create use case instance with mocked dependencies."""
         return MyUseCase(dependency=mock_dependency)
-    
+
     @pytest.mark.asyncio
     async def test_some_operation(self, use_case):
         """Test some operation."""
@@ -405,7 +405,7 @@ tests/
 │   ├── config/               # Configuration tests
 │   ├── core/                 # Business logic tests
 │   │   ├── entities/        # Entity tests
-│   │   ├── usecases/        # Use case tests  
+│   │   ├── usecases/        # Use case tests
 │   │   └── interfaces/      # Interface tests
 │   ├── providers/           # Provider implementation tests
 │   │   ├── feeds/          # Feed provider tests
@@ -437,16 +437,16 @@ tests/
 @pytest.mark.integration
 class TestServiceIntegration:
     """Integration tests following best practices."""
-    
+
     def test_service_with_memory_providers(self, test_config, test_malicious_packages):
         """Test using centralized fixtures."""
         # Use test_config instead of loading configuration manually
         service_factory = ServiceFactory(test_config)
-        
+
         # Use centralized test data instead of creating local packages
         packages_feed = service_factory.create_packages_feed()
         # Test implementation...
-        
+
     def test_another_service(self, test_config, memory_feed_with_packages):
         """Test with pre-configured memory providers."""
         # Memory providers are ready to use with test data
@@ -467,7 +467,7 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
-    
+
     SCAN_RESULTS {
         uuid id PK
         uuid registry_id FK
@@ -478,7 +478,7 @@ erDiagram
         int packages_blocked
         timestamp created_at
     }
-    
+
     MALICIOUS_PACKAGES {
         uuid id PK
         uuid scan_result_id FK
@@ -492,14 +492,14 @@ erDiagram
         text affected_json
         timestamp created_at
     }
-    
+
     FINDINGS {
         uuid id PK
         uuid scan_result_id FK
         uuid malicious_package_id FK
         timestamp created_at
     }
-    
+
     BLOCKED_PACKAGES {
         uuid id PK
         uuid scan_result_id FK
@@ -510,7 +510,7 @@ erDiagram
         timestamp blocked_at
         timestamp created_at
     }
-    
+
     REGISTRIES ||--o{ SCAN_RESULTS : "scans"
     SCAN_RESULTS ||--o{ MALICIOUS_PACKAGES : "contains"
     SCAN_RESULTS ||--o{ FINDINGS : "produces"
@@ -683,6 +683,25 @@ The application provides structured logging:
 - Maintain test coverage above 90%
 - Use separated test structure with `tests/unit/` and `tests/integration/`
 - Update documentation for API changes
+
+**Pre-commit Hooks:**
+All code must pass automated quality checks via pre-commit hooks:
+```bash
+# Install hooks (run once after cloning)
+uv run pre-commit install
+
+# Run manually on all files
+uv run pre-commit run --all-files
+
+# Update hook versions
+uv run pre-commit autoupdate
+```
+
+The hooks include:
+- **Code formatting**: Black (code), isort (imports)
+- **Code quality**: Flake8 (linting), Bandit (security scanning)
+- **Secrets detection**: TruffleHog (prevents credential commits)
+- **File checks**: Trailing whitespace, YAML/JSON validation
 
 See `STANDARDS.md` for detailed coding standards and testing guidelines.
 

@@ -1,8 +1,9 @@
 """Test cases for feed management use case."""
 
-import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock
-from datetime import datetime, timezone
+
+import pytest
 
 from src.core.entities.malicious_package import MaliciousPackage
 from src.core.usecases.feed_management import FeedManagementUseCase
@@ -38,7 +39,7 @@ def sample_packages():
             affected_versions=["1.0.0"],
             database_specific={},
             published_at=None,
-            modified_at=None
+            modified_at=None,
         ),
         MaliciousPackage(
             advisory_id="OSV-2023-002",
@@ -52,7 +53,7 @@ def sample_packages():
             affected_versions=["2.0.0"],
             database_specific={},
             published_at=None,
-            modified_at=None
+            modified_at=None,
         ),
         MaliciousPackage(
             advisory_id="OSV-2023-003",
@@ -66,20 +67,24 @@ def sample_packages():
             affected_versions=["1.5.0"],
             database_specific={},
             published_at=None,
-            modified_at=None
-        )
+            modified_at=None,
+        ),
     ]
 
 
 @pytest.mark.asyncio
-async def test_fetch_recent_packages_success(feed_usecase, mock_packages_feed, sample_packages):
+async def test_fetch_recent_packages_success(
+    feed_usecase, mock_packages_feed, sample_packages
+):
     """Test successful fetching of recent packages."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = sample_packages
-    
+
     # Act
-    result = await feed_usecase.fetch_recent_packages(ecosystem="npm", limit=100, hours=48)
-    
+    result = await feed_usecase.fetch_recent_packages(
+        ecosystem="npm", limit=100, hours=48
+    )
+
     # Assert
     assert result["success"] is True
     assert result["total_count"] == 2  # Only npm packages
@@ -89,23 +94,24 @@ async def test_fetch_recent_packages_success(feed_usecase, mock_packages_feed, s
     assert "npm" in result["ecosystem_counts"]
     assert result["ecosystem_counts"]["npm"] == 2
     assert isinstance(result["fetch_time"], datetime)
-    
+
     # Verify the call
     mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
-        max_packages=100,
-        hours=48
+        max_packages=100, hours=48
     )
 
 
 @pytest.mark.asyncio
-async def test_fetch_recent_packages_no_ecosystem_filter(feed_usecase, mock_packages_feed, sample_packages):
+async def test_fetch_recent_packages_no_ecosystem_filter(
+    feed_usecase, mock_packages_feed, sample_packages
+):
     """Test fetching packages without ecosystem filter."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = sample_packages
-    
+
     # Act
     result = await feed_usecase.fetch_recent_packages(limit=50, hours=24)
-    
+
     # Assert
     assert result["success"] is True
     assert result["total_count"] == 3  # All packages
@@ -119,10 +125,12 @@ async def test_fetch_recent_packages_empty_result(feed_usecase, mock_packages_fe
     """Test fetching packages when none are found."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = []
-    
+
     # Act
-    result = await feed_usecase.fetch_recent_packages(ecosystem="maven", limit=10, hours=6)
-    
+    result = await feed_usecase.fetch_recent_packages(
+        ecosystem="maven", limit=10, hours=6
+    )
+
     # Assert
     assert result["success"] is True
     assert result["total_count"] == 0
@@ -134,11 +142,15 @@ async def test_fetch_recent_packages_empty_result(feed_usecase, mock_packages_fe
 async def test_fetch_recent_packages_exception(feed_usecase, mock_packages_feed):
     """Test exception handling during package fetching."""
     # Arrange
-    mock_packages_feed.fetch_malicious_packages.side_effect = Exception("Feed connection error")
-    
+    mock_packages_feed.fetch_malicious_packages.side_effect = Exception(
+        "Feed connection error"
+    )
+
     # Act
-    result = await feed_usecase.fetch_recent_packages(ecosystem="npm", limit=100, hours=48)
-    
+    result = await feed_usecase.fetch_recent_packages(
+        ecosystem="npm", limit=100, hours=48
+    )
+
     # Assert
     assert result["success"] is False
     assert "Feed connection error" in result["error"]
@@ -147,24 +159,25 @@ async def test_fetch_recent_packages_exception(feed_usecase, mock_packages_feed)
 
 
 @pytest.mark.asyncio
-async def test_get_feed_health_success(feed_usecase, mock_packages_feed, sample_packages):
+async def test_get_feed_health_success(
+    feed_usecase, mock_packages_feed, sample_packages
+):
     """Test successful feed health check."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = sample_packages[:1]
-    
+
     # Act
     result = await feed_usecase.get_feed_health()
-    
+
     # Assert
     assert result["success"] is True
     assert result["healthy"] is True
     assert result["feed_name"] == "Test OSV Feed"
     assert result["test_fetch_count"] == 1
-    
+
     # Verify the test call
     mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
-        max_packages=1,
-        hours=24
+        max_packages=1, hours=24
     )
 
 
@@ -173,10 +186,10 @@ async def test_get_feed_health_unhealthy(feed_usecase, mock_packages_feed):
     """Test feed health check when feed is unhealthy."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = None
-    
+
     # Act
     result = await feed_usecase.get_feed_health()
-    
+
     # Assert
     assert result["success"] is True
     assert result["healthy"] is False
@@ -188,10 +201,10 @@ async def test_get_feed_health_exception(feed_usecase, mock_packages_feed):
     """Test feed health check with exception."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.side_effect = Exception("Network error")
-    
+
     # Act
     result = await feed_usecase.get_feed_health()
-    
+
     # Assert
     assert result["success"] is False
     assert "Network error" in result["error"]
@@ -199,14 +212,16 @@ async def test_get_feed_health_exception(feed_usecase, mock_packages_feed):
 
 
 @pytest.mark.asyncio
-async def test_get_package_details_found(feed_usecase, mock_packages_feed, sample_packages):
+async def test_get_package_details_found(
+    feed_usecase, mock_packages_feed, sample_packages
+):
     """Test getting details for a specific package that exists."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = sample_packages
-    
+
     # Act
     result = await feed_usecase.get_package_details("evil-npm-package", "npm")
-    
+
     # Assert
     assert result["success"] is True
     assert result["found"] is True
@@ -218,14 +233,16 @@ async def test_get_package_details_found(feed_usecase, mock_packages_feed, sampl
 
 
 @pytest.mark.asyncio
-async def test_get_package_details_not_found(feed_usecase, mock_packages_feed, sample_packages):
+async def test_get_package_details_not_found(
+    feed_usecase, mock_packages_feed, sample_packages
+):
     """Test getting details for a package that doesn't exist."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.return_value = sample_packages
-    
+
     # Act
     result = await feed_usecase.get_package_details("nonexistent-package", "npm")
-    
+
     # Assert
     assert result["success"] is True
     assert result["found"] is False
@@ -239,10 +256,10 @@ async def test_get_package_details_exception(feed_usecase, mock_packages_feed):
     """Test exception handling in get_package_details."""
     # Arrange
     mock_packages_feed.fetch_malicious_packages.side_effect = Exception("Feed error")
-    
+
     # Act
     result = await feed_usecase.get_package_details("test-package", "npm")
-    
+
     # Assert
     assert result["success"] is False
     assert "Feed error" in result["error"]

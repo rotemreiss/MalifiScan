@@ -15,7 +15,7 @@ packages_feed:
     max_retries: 3
     retry_delay: 1.0
 
-# Package Registry Configuration  
+# Package Registry Configuration
 packages_registry:
   type: jfrog  # Currently only 'jfrog' is supported
   enabled: false  # Disabled by default to avoid requiring credentials
@@ -47,11 +47,11 @@ notification_service:
     timeout_seconds: 30
     max_retries: 3
     retry_delay: 1.0
-    
+
     # MS Teams webhook configuration (when type: msteams)
     # webhook_url can be set here or via MSTEAMS_WEBHOOK_URL environment variable
     # webhook_url: "https://outlook.office365.com/webhook/your-webhook-url"
-    
+
     # Generic webhook configuration (when type: webhook)
     # webhook_url can be set here or via WEBHOOK_URL environment variable
     # webhook_url: "https://webhook.com/WEBHOOK"
@@ -67,7 +67,7 @@ storage_service:
     # For memory storage (default for integration tests and local development):
     max_scan_results: 1000
     clear_on_init: false
-    
+
     # For file storage (each scan result saved as individual JSON file):
     # data_directory: "scan_results"
 

@@ -45,11 +45,12 @@ test = [
 ]
 dev = [
     "pytest==7.4.3",
-    "pytest-asyncio==0.21.1", 
+    "pytest-asyncio==0.21.1",
     "pytest-cov>=4.0.0",
     "black>=23.0.0",
     "isort>=5.12.0",
     "flake8>=6.0.0",
+    "pre-commit>=4.3.0",
 ]
 
 [project.scripts]
@@ -60,9 +61,10 @@ dev = [
     "pytest==7.4.3",
     "pytest-asyncio==0.21.1",
     "pytest-cov>=4.0.0",
-    "black>=23.0.0", 
+    "black>=23.0.0",
     "isort>=5.12.0",
     "flake8>=6.0.0",
+    "pre-commit>=4.3.0",
 ]
 
 [tool.pytest.ini_options]

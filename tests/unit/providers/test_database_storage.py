@@ -1,11 +1,17 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
+
+from src.core.entities import MaliciousPackage, ScanResult, ScanStatus
 from src.providers.storage.database_storage import DatabaseStorage
-from src.core.entities import ScanResult, ScanStatus, MaliciousPackage
+
 
 @pytest.fixture
 def db_storage():
-    return DatabaseStorage(database_path=":memory:", in_memory=True, connection_timeout=5.0)
+    return DatabaseStorage(
+        database_path=":memory:", in_memory=True, connection_timeout=5.0
+    )
+
 
 @pytest.fixture
 def sample_packages():
@@ -22,7 +28,7 @@ def sample_packages():
             affected_versions=["1.0.0"],
             database_specific={},
             published_at=datetime.now(timezone.utc) - timedelta(days=1),
-            modified_at=datetime.now(timezone.utc)
+            modified_at=datetime.now(timezone.utc),
         ),
         MaliciousPackage(
             name="pkg-b",
@@ -36,9 +42,10 @@ def sample_packages():
             affected_versions=["2.0.0"],
             database_specific={},
             published_at=datetime.now(timezone.utc) - timedelta(days=2),
-            modified_at=datetime.now(timezone.utc)
-        )
+            modified_at=datetime.now(timezone.utc),
+        ),
     ]
+
 
 @pytest.fixture
 def scan_result_factory(sample_packages):
@@ -52,9 +59,11 @@ def scan_result_factory(sample_packages):
             packages_blocked=[p.name for p in sample_packages] if with_findings else [],
             malicious_packages_list=sample_packages if with_findings else [],
             errors=[],
-            execution_duration_seconds=1.23
+            execution_duration_seconds=1.23,
         )
+
     return _make
+
 
 @pytest.mark.asyncio
 async def test_store_and_retrieve_scan_results(db_storage, scan_result_factory):
@@ -66,6 +75,7 @@ async def test_store_and_retrieve_scan_results(db_storage, scan_result_factory):
     results = await db_storage.get_scan_results()
     ids = {r.scan_id for r in results}
     assert {"scan-1", "scan-2"} <= ids
+
 
 @pytest.mark.asyncio
 async def test_update_existing_scan_result(db_storage, scan_result_factory):
@@ -80,6 +90,7 @@ async def test_update_existing_scan_result(db_storage, scan_result_factory):
     assert len(r.malicious_packages_found) == 2
     assert len(r.packages_blocked) == 2
 
+
 @pytest.mark.asyncio
 async def test_limit_and_scan_id_filters(db_storage, scan_result_factory):
     for i in range(5):
@@ -90,12 +101,16 @@ async def test_limit_and_scan_id_filters(db_storage, scan_result_factory):
     assert len(specific) == 1
     assert specific[0].scan_id == "scan-2"
 
+
 @pytest.mark.asyncio
 async def test_known_malicious_packages(db_storage, scan_result_factory):
-    await db_storage.store_scan_result(scan_result_factory("scan-x", with_findings=True))
+    await db_storage.store_scan_result(
+        scan_result_factory("scan-x", with_findings=True)
+    )
     pkgs = await db_storage.get_known_malicious_packages()
     names = {p.name for p in pkgs}
     assert {"pkg-a", "pkg-b"} <= names
+
 
 @pytest.mark.asyncio
 async def test_health_check(db_storage):

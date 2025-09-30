@@ -1,12 +1,10 @@
 """Integration tests for the security scanner pipeline."""
 
-import pytest
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
 from datetime import datetime
+from unittest.mock import patch
 
-from src.config import ConfigLoader
+import pytest
+
 from src.core.entities import MaliciousPackage, ScanStatus
 from src.core.usecases import SecurityScanner
 from src.factories import ServiceFactory
@@ -24,9 +22,9 @@ class TestSecurityScannerIntegration:
             packages_feed=factory.create_packages_feed(),
             registry_service=factory.create_packages_registry(),
             storage_service=factory.create_storage_service(),
-            notification_service=factory.create_notification_service()
+            notification_service=factory.create_notification_service(),
         )
-        
+
         return scanner
 
     @pytest.mark.asyncio
@@ -45,33 +43,41 @@ class TestSecurityScannerIntegration:
             affected_versions=["1.0.0"],
             database_specific={"severity": "HIGH"},
             published_at=datetime(2023, 1, 1),
-            modified_at=datetime(2023, 1, 1)
+            modified_at=datetime(2023, 1, 1),
         )
 
         # Mock the external services
-        with patch.object(test_scanner._packages_feed, 'fetch_malicious_packages') as mock_fetch, \
-             patch.object(test_scanner._registry_service, 'check_existing_packages') as mock_check, \
-             patch.object(test_scanner._registry_service, 'block_packages') as mock_block:
-            
+        with (
+            patch.object(
+                test_scanner._packages_feed, "fetch_malicious_packages"
+            ) as mock_fetch,
+            patch.object(
+                test_scanner._registry_service, "check_existing_packages"
+            ) as mock_check,
+            patch.object(
+                test_scanner._registry_service, "block_packages"
+            ) as mock_block,
+        ):
+
             # Configure mocks
             mock_fetch.return_value = [test_package]
             mock_check.return_value = []  # No existing packages
             mock_block.return_value = []  # No packages blocked
-            
+
             # Execute scan
             result = await test_scanner.execute_scan()
-            
+
             # Verify results
             assert result.status == ScanStatus.SUCCESS
             assert len(result.malicious_packages_found) == 1
             assert result.malicious_packages_found[0].name == "malicious-test-pkg"
-            
+
             # Verify service calls
             mock_fetch.assert_called_once()
             mock_check.assert_called_once_with([test_package])
             mock_block.assert_called_once_with([test_package])
 
-    @pytest.mark.asyncio  
+    @pytest.mark.asyncio
     async def test_scanner_component_initialization(self, test_scanner):
         """Test scanner component initialization."""
         # Verify all services are properly initialized

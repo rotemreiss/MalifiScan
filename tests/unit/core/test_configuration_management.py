@@ -1,10 +1,12 @@
 """Tests for Configuration Management Use Case."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import patch
+
+import pytest
+
 from src.core.usecases.configuration_management import ConfigurationManagementUseCase
 
 
@@ -18,10 +20,11 @@ class TestConfigurationManagementUseCase:
         self.config_file = str(self.temp_dir / "config.yaml")
         self.env_file = str(self.temp_dir / ".env")
         self.local_config_file = str(self.temp_dir / "config.local.yaml")
-        
+
         # Create basic config.yaml for testing
-        with open(self.config_file, 'w') as f:
-            f.write("""
+        with open(self.config_file, "w") as f:
+            f.write(
+                """
 environment: test
 debug: false
 packages_feed:
@@ -38,12 +41,13 @@ notification_service:
   enabled: false
 logging:
   level: INFO
-""")
-        
+"""
+            )
+
         self.use_case = ConfigurationManagementUseCase(
             config_file=self.config_file,
             env_file=self.env_file,
-            local_config_file=self.local_config_file
+            local_config_file=self.local_config_file,
         )
 
     def teardown_method(self):
@@ -54,7 +58,7 @@ logging:
     async def test_initialize_configuration_success(self):
         """Test successful configuration initialization."""
         success, message = await self.use_case.initialize_configuration()
-        
+
         assert success is True
         assert "Configuration initialization complete!" in message
         assert Path(self.local_config_file).exists()
@@ -66,9 +70,9 @@ logging:
         # Create existing files
         Path(self.local_config_file).touch()
         Path(self.env_file).touch()
-        
+
         success, message = await self.use_case.initialize_configuration()
-        
+
         assert success is False
         assert "already exists" in message
 
@@ -78,9 +82,11 @@ logging:
         # Create existing files
         Path(self.local_config_file).touch()
         Path(self.env_file).touch()
-        
-        success, message = await self.use_case.initialize_configuration(overwrite_existing=True)
-        
+
+        success, message = await self.use_case.initialize_configuration(
+            overwrite_existing=True
+        )
+
         assert success is True
         assert "Configuration initialization complete!" in message
 
@@ -90,25 +96,31 @@ logging:
         # Create template files
         template_local = Path(f"{self.local_config_file}.example")
         template_env = Path(".env.example")
-        
+
+        # Check if .env.example exists before the test
+        env_example_existed = template_env.exists()
+
         template_local.write_text("# Template local config")
-        template_env.write_text("# Template env file")
-        
+        if not env_example_existed:
+            template_env.write_text("# Template env file")
+
         success, message = await self.use_case.initialize_configuration()
-        
+
         assert success is True
         assert Path(self.local_config_file).exists()
         assert Path(self.env_file).exists()
-        
+
         # Clean up templates
         template_local.unlink()
-        template_env.unlink()
+        # Only delete .env.example if it didn't exist before the test
+        if not env_example_existed and template_env.exists():
+            template_env.unlink()
 
     def test_create_env_file_success(self):
         """Test successful .env file creation."""
         env_path = Path(self.env_file)
         success, message = self.use_case._create_env_file(env_path)
-        
+
         assert success is True
         assert "Created" in message
         assert env_path.exists()
@@ -117,56 +129,83 @@ logging:
         """Test .env file creation from template."""
         # Create template
         template = Path(".env.example")
+
+        # Check if .env.example exists before the test
+        env_example_existed = template.exists()
+        original_content = None
+        if env_example_existed:
+            # Save original content to restore later
+            original_content = template.read_text()
+
         template.write_text("TEMPLATE_VAR=value")
-        
+
         env_path = Path(self.env_file)
         success, message = self.use_case._create_env_file(env_path)
-        
+
         assert success is True
         assert "from template" in message
         assert env_path.exists()
         assert "TEMPLATE_VAR=value" in env_path.read_text()
-        
-        # Clean up template
-        template.unlink()
+
+        # Restore original .env.example or clean up if it didn't exist before
+        if env_example_existed:
+            template.write_text(original_content)
+        else:
+            template.unlink()
 
     @pytest.mark.asyncio
     async def test_get_configuration_summary_success(self):
         """Test successful configuration summary retrieval."""
         # Mock the ConfigLoader to avoid dependency issues
-        with patch('src.core.usecases.configuration_management.ConfigLoader') as mock_loader:
-            mock_config = type('Config', (), {
-                'environment': 'test',
-                'debug': False,
-                'packages_feed': type('Feed', (), {'type': 'osv', 'enabled': True})(),
-                'packages_registry': type('Registry', (), {'type': 'jfrog', 'enabled': False})(),
-                'storage_service': type('Storage', (), {'type': 'file', 'enabled': True})(),
-                'notification_service': type('Notification', (), {'type': 'console', 'enabled': False})(),
-                'logging': type('Logging', (), {'level': 'INFO'})(),
-                'jfrog_base_url': 'https://test.jfrog.io',
-                'jfrog_username': 'testuser',
-                'jfrog_api_key': None
-            })()
-            
+        with patch(
+            "src.core.usecases.configuration_management.ConfigLoader"
+        ) as mock_loader:
+            mock_config = type(
+                "Config",
+                (),
+                {
+                    "environment": "test",
+                    "debug": False,
+                    "packages_feed": type(
+                        "Feed", (), {"type": "osv", "enabled": True}
+                    )(),
+                    "packages_registry": type(
+                        "Registry", (), {"type": "jfrog", "enabled": False}
+                    )(),
+                    "storage_service": type(
+                        "Storage", (), {"type": "file", "enabled": True}
+                    )(),
+                    "notification_service": type(
+                        "Notification", (), {"type": "console", "enabled": False}
+                    )(),
+                    "logging": type("Logging", (), {"level": "INFO"})(),
+                    "jfrog_base_url": "https://test.jfrog.io",
+                    "jfrog_username": "testuser",
+                    "jfrog_api_key": None,
+                },
+            )()
+
             mock_loader.return_value.load.return_value = mock_config
-            
+
             success, summary = await self.use_case.get_configuration_summary()
-            
+
             assert success is True
-            assert 'settings' in summary
-            assert 'environment_vars' in summary
-            assert 'files' in summary
-            assert summary['settings']['environment'] == 'test'
-            assert summary['settings']['debug'] is False
+            assert "settings" in summary
+            assert "environment_vars" in summary
+            assert "files" in summary
+            assert summary["settings"]["environment"] == "test"
+            assert summary["settings"]["debug"] is False
 
     @pytest.mark.asyncio
     async def test_get_configuration_summary_error(self):
         """Test configuration summary retrieval with error."""
-        with patch('src.core.usecases.configuration_management.ConfigLoader') as mock_loader:
+        with patch(
+            "src.core.usecases.configuration_management.ConfigLoader"
+        ) as mock_loader:
             mock_loader.side_effect = Exception("Config load error")
-            
+
             success, summary = await self.use_case.get_configuration_summary()
-            
+
             assert success is False
             assert summary == {}
 
@@ -175,72 +214,99 @@ logging:
         # Create some files
         Path(self.config_file).touch()
         Path(self.local_config_file).touch()
-        
+
         status = self.use_case._get_configuration_files_status()
-        
-        assert 'config.yaml' in status
-        assert status[Path(self.config_file).name]['exists'] is True
-        assert status[self.local_config_file]['exists'] is True
-        assert status[self.env_file]['exists'] is False
+
+        assert "config.yaml" in status
+        assert status[Path(self.config_file).name]["exists"] is True
+        assert status[self.local_config_file]["exists"] is True
+        assert status[self.env_file]["exists"] is False
 
     @pytest.mark.asyncio
     async def test_validate_configuration_success(self):
         """Test successful configuration validation."""
-        with patch('src.core.usecases.configuration_management.ConfigLoader') as mock_loader:
-            mock_config = type('Config', (), {
-                'packages_registry': type('Registry', (), {'enabled': True})(),
-                'packages_feed': type('Feed', (), {'enabled': True})(),
-                'storage_service': type('Storage', (), {
-                    'type': 'file',
-                    'config': {'data_directory': str(self.temp_dir)}
-                })(),
-                'jfrog_base_url': 'https://test.jfrog.io',
-                'jfrog_api_key': 'test_key',
-                'jfrog_username': None,
-                'jfrog_password': None
-            })()
-            
+        with patch(
+            "src.core.usecases.configuration_management.ConfigLoader"
+        ) as mock_loader:
+            mock_config = type(
+                "Config",
+                (),
+                {
+                    "packages_registry": type("Registry", (), {"enabled": True})(),
+                    "packages_feed": type("Feed", (), {"enabled": True})(),
+                    "storage_service": type(
+                        "Storage",
+                        (),
+                        {
+                            "type": "file",
+                            "config": {"data_directory": str(self.temp_dir)},
+                        },
+                    )(),
+                    "jfrog_base_url": "https://test.jfrog.io",
+                    "jfrog_api_key": "test_key",
+                    "jfrog_username": None,
+                    "jfrog_password": None,
+                },
+            )()
+
             mock_loader.return_value.load.return_value = mock_config
-            
+
             success, results = await self.use_case.validate_configuration()
-            
+
             assert success is True
             assert len(results) > 0
-            assert any("Configuration loaded successfully" in r['message'] for r in results)
+            assert any(
+                "Configuration loaded successfully" in r["message"] for r in results
+            )
 
     @pytest.mark.asyncio
     async def test_validate_configuration_missing_credentials(self):
         """Test configuration validation with missing JFrog credentials."""
-        with patch('src.core.usecases.configuration_management.ConfigLoader') as mock_loader:
-            mock_config = type('Config', (), {
-                'packages_registry': type('Registry', (), {'enabled': True})(),
-                'packages_feed': type('Feed', (), {'enabled': True})(),
-                'storage_service': type('Storage', (), {
-                    'type': 'file',
-                    'config': {'data_directory': str(self.temp_dir)}
-                })(),
-                'jfrog_base_url': 'https://test.jfrog.io',
-                'jfrog_api_key': None,
-                'jfrog_username': None,
-                'jfrog_password': None
-            })()
-            
+        with patch(
+            "src.core.usecases.configuration_management.ConfigLoader"
+        ) as mock_loader:
+            mock_config = type(
+                "Config",
+                (),
+                {
+                    "packages_registry": type("Registry", (), {"enabled": True})(),
+                    "packages_feed": type("Feed", (), {"enabled": True})(),
+                    "storage_service": type(
+                        "Storage",
+                        (),
+                        {
+                            "type": "file",
+                            "config": {"data_directory": str(self.temp_dir)},
+                        },
+                    )(),
+                    "jfrog_base_url": "https://test.jfrog.io",
+                    "jfrog_api_key": None,
+                    "jfrog_username": None,
+                    "jfrog_password": None,
+                },
+            )()
+
             mock_loader.return_value.load.return_value = mock_config
-            
+
             success, results = await self.use_case.validate_configuration()
-            
+
             assert success is False
-            assert any("❌" in r['status'] and "credentials not configured" in r['message'] for r in results)
+            assert any(
+                "❌" in r["status"] and "credentials not configured" in r["message"]
+                for r in results
+            )
 
     @pytest.mark.asyncio
     async def test_validate_configuration_load_error(self):
         """Test configuration validation with loading error."""
-        with patch('src.core.usecases.configuration_management.ConfigLoader') as mock_loader:
+        with patch(
+            "src.core.usecases.configuration_management.ConfigLoader"
+        ) as mock_loader:
             mock_loader.return_value.load.side_effect = Exception("Load error")
-            
+
             success, results = await self.use_case.validate_configuration()
-            
+
             assert success is False
             assert len(results) == 1
-            assert "❌" in results[0]['status']
-            assert "Configuration loading failed" in results[0]['message']
+            assert "❌" in results[0]["status"]
+            assert "Configuration loading failed" in results[0]["message"]

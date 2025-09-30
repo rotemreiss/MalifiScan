@@ -1,11 +1,19 @@
 """Test configuration and utilities."""
 
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
-from src.core.entities import MaliciousPackage, ScanResult, ScanStatus, NotificationEvent, NotificationLevel, NotificationChannel
+import pytest
+
+from src.core.entities import (
+    MaliciousPackage,
+    NotificationChannel,
+    NotificationEvent,
+    NotificationLevel,
+    ScanResult,
+    ScanStatus,
+)
 
 
 @pytest.fixture
@@ -24,12 +32,12 @@ def test_malicious_packages():
             affected_versions=["1.0.0", "1.1.0"],
             database_specific={"severity": "CRITICAL"},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
+            modified_at=datetime.now(timezone.utc),
         ),
         MaliciousPackage(
             name="test-safe-npm",
             version="2.0.0",
-            ecosystem="npm", 
+            ecosystem="npm",
             package_url="pkg:npm/test-safe-npm@2.0.0",
             advisory_id="TEST-SAFE-001",
             summary="Safe test package",
@@ -38,13 +46,13 @@ def test_malicious_packages():
             affected_versions=["2.0.0"],
             database_specific={"severity": "LOW"},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
+            modified_at=datetime.now(timezone.utc),
         ),
         MaliciousPackage(
             name="test-pypi-pkg",
             version="3.0.0",
             ecosystem="PyPI",
-            package_url="pkg:pypi/test-pypi-pkg@3.0.0", 
+            package_url="pkg:pypi/test-pypi-pkg@3.0.0",
             advisory_id="TEST-PYPI-001",
             summary="PyPI test package",
             details="PyPI ecosystem test package",
@@ -52,8 +60,8 @@ def test_malicious_packages():
             affected_versions=["3.0.0", "3.1.0"],
             database_specific={"severity": "HIGH"},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
-        )
+            modified_at=datetime.now(timezone.utc),
+        ),
     ]
 
 
@@ -64,7 +72,7 @@ def sample_malicious_package(test_malicious_packages):
     return test_malicious_packages[2]
 
 
-@pytest.fixture 
+@pytest.fixture
 def sample_npm_malicious_package(test_malicious_packages):
     """Get an npm malicious package for npm-specific tests."""
     # Return the first npm package (index 0)
@@ -83,7 +91,7 @@ def sample_scan_result(sample_malicious_package):
         packages_blocked=["PyPI:malicious-pkg:1.0.0"],
         malicious_packages_list=[],
         errors=[],
-        execution_duration_seconds=1.5
+        execution_duration_seconds=1.5,
     )
 
 
@@ -99,7 +107,7 @@ def clean_scan_result():
         packages_blocked=[],
         malicious_packages_list=[],
         errors=[],
-        execution_duration_seconds=1.5
+        execution_duration_seconds=1.5,
     )
 
 
@@ -115,18 +123,18 @@ def critical_scan_result(sample_npm_malicious_package):
         packages_blocked=[],
         malicious_packages_list=[sample_npm_malicious_package],
         errors=[],
-        execution_duration_seconds=2.3
+        execution_duration_seconds=2.3,
     )
 
 
-@pytest.fixture 
+@pytest.fixture
 def sample_notification_event(sample_scan_result):
     """Create a sample notification event for testing."""
     return NotificationEvent.create_threat_notification(
         event_id="notif-123",
         scan_result=sample_scan_result,
         channels=[NotificationChannel.SLACK, NotificationChannel.EMAIL],
-        metadata={"test": True}
+        metadata={"test": True},
     )
 
 
@@ -142,7 +150,7 @@ def info_notification_event(clean_scan_result):
         scan_result=clean_scan_result,
         affected_packages=None,
         channels=[NotificationChannel.WEBHOOK],
-        metadata={"test": True}
+        metadata={"test": True},
     )
 
 
@@ -160,7 +168,7 @@ def warning_notification_event(clean_scan_result):
         channels=[NotificationChannel.WEBHOOK],
         metadata={},
         registry_type="jfrog",
-        registry_url="https://test.jfrog.io"
+        registry_url="https://test.jfrog.io",
     )
 
 
@@ -177,8 +185,8 @@ def critical_notification_event(critical_scan_result, sample_npm_malicious_packa
         affected_packages=[sample_npm_malicious_package],
         channels=[NotificationChannel.WEBHOOK],
         metadata={"test": True},
-        registry_type="jfrog", 
-        registry_url="https://test.jfrog.io"
+        registry_type="jfrog",
+        registry_url="https://test.jfrog.io",
     )
 
 
@@ -194,7 +202,7 @@ def basic_notification_event(clean_scan_result):
         scan_result=clean_scan_result,
         affected_packages=None,
         channels=[NotificationChannel.WEBHOOK],
-        metadata={}
+        metadata={},
     )
 
 
@@ -249,13 +257,13 @@ def event_loop():
 
 class AsyncIterator:
     """Helper class for async iteration in tests."""
-    
+
     def __init__(self, items):
         self.items = iter(items)
-    
+
     def __aiter__(self):
         return self
-    
+
     async def __anext__(self):
         try:
             return next(self.items)
@@ -267,6 +275,7 @@ class AsyncIterator:
 def test_config_path():
     """Get path to test configuration file."""
     from pathlib import Path
+
     config_path = Path(__file__).parent / "config.tests.yaml"
     return str(config_path)
 
@@ -275,6 +284,7 @@ def test_config_path():
 def test_config(test_config_path):
     """Load test configuration for integration tests."""
     from src.config.config_loader import ConfigLoader
+
     config_loader = ConfigLoader(config_file=test_config_path)
     return config_loader.load()
 
@@ -283,6 +293,7 @@ def test_config(test_config_path):
 def memory_feed_with_packages(test_malicious_packages):
     """Create a memory feed with test packages."""
     from src.providers.feeds.memory_feed import MemoryFeed
+
     return MemoryFeed(packages=test_malicious_packages)
 
 
@@ -290,6 +301,7 @@ def memory_feed_with_packages(test_malicious_packages):
 def null_registry_with_packages(test_registry_packages):
     """Create a null registry with simulated test packages."""
     from src.providers.registries.null_registry import NullRegistry
+
     return NullRegistry(packages=test_registry_packages)
 
 
@@ -297,6 +309,7 @@ def null_registry_with_packages(test_registry_packages):
 def memory_storage():
     """Create a memory storage instance for testing."""
     from src.providers.storage.memory_storage import MemoryStorage
+
     return MemoryStorage(clear_on_init=True)
 
 
@@ -304,6 +317,7 @@ def memory_storage():
 def null_notifier():
     """Create a null notifier for testing."""
     from src.providers.notifications.null_notifier import NullNotifier
+
     return NullNotifier()
 
 
@@ -321,17 +335,21 @@ def test_registry_packages():
             summary="Simulated registry package",
             details="Simulated package in registry",
             aliases=[],
-            affected_versions=["1.0.0", "1.2.0", "1.3.0"],  # Contains overlap with malicious
+            affected_versions=[
+                "1.0.0",
+                "1.2.0",
+                "1.3.0",
+            ],  # Contains overlap with malicious
             database_specific={},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
+            modified_at=datetime.now(timezone.utc),
         ),
         # This package has NO overlapping versions with test-safe-npm
         MaliciousPackage(
             name="test-safe-npm",
             version="2.1.0",
             ecosystem="npm",
-            package_url="pkg:npm/test-safe-npm@2.1.0", 
+            package_url="pkg:npm/test-safe-npm@2.1.0",
             advisory_id="REGISTRY-SIM-002",
             summary="Simulated safe registry package",
             details="Safe simulated package in registry",
@@ -339,7 +357,7 @@ def test_registry_packages():
             affected_versions=["2.1.0", "2.2.0"],  # No overlap with malicious versions
             database_specific={},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
+            modified_at=datetime.now(timezone.utc),
         ),
         # Extra package not in malicious list
         MaliciousPackage(
@@ -347,13 +365,13 @@ def test_registry_packages():
             version="4.0.0",
             ecosystem="npm",
             package_url="pkg:npm/extra-registry-pkg@4.0.0",
-            advisory_id="REGISTRY-SIM-003", 
+            advisory_id="REGISTRY-SIM-003",
             summary="Extra simulated registry package",
             details="Extra package only in registry",
             aliases=[],
             affected_versions=["4.0.0"],
             database_specific={},
             published_at=datetime.now(timezone.utc),
-            modified_at=datetime.now(timezone.utc)
-        )
+            modified_at=datetime.now(timezone.utc),
+        ),
     ]

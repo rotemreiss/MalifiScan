@@ -1,20 +1,20 @@
 """Use cases module."""
 
-from .security_scanner import SecurityScanner
-from .security_analysis import SecurityAnalysisUseCase
-from .package_management import PackageManagementUseCase
-from .data_management import DataManagementUseCase
-from .health_management import HealthManagementUseCase
-from .scan_results import ScanResultsManager
-from .registry_management import RegistryManagementUseCase
-from .feed_management import FeedManagementUseCase
-from .proactive_security import ProactiveSecurityUseCase
 from .configuration_management import ConfigurationManagementUseCase
+from .data_management import DataManagementUseCase
+from .feed_management import FeedManagementUseCase
+from .health_management import HealthManagementUseCase
 from .notification_testing import NotificationTestingUseCase
+from .package_management import PackageManagementUseCase
+from .proactive_security import ProactiveSecurityUseCase
+from .registry_management import RegistryManagementUseCase
+from .scan_results import ScanResultsManager
+from .security_analysis import SecurityAnalysisUseCase
+from .security_scanner import SecurityScanner
 
 __all__ = [
     "SecurityScanner",
-    "SecurityAnalysisUseCase", 
+    "SecurityAnalysisUseCase",
     "PackageManagementUseCase",
     "DataManagementUseCase",
     "HealthManagementUseCase",
@@ -23,5 +23,5 @@ __all__ = [
     "FeedManagementUseCase",
     "ProactiveSecurityUseCase",
     "ConfigurationManagementUseCase",
-    "NotificationTestingUseCase"
+    "NotificationTestingUseCase",
 ]

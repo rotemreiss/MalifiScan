@@ -1,0 +1,83 @@
+# Pre-commit configuration for Malifiscan Security Scanner
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: debug-statements
+
+  # Python code formatting
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3
+        args: ['--line-length=88']
+
+  # Python import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # Python linting
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args: ['--max-line-length=88', '--extend-ignore=E203,W503,E501']
+
+  # Security scanning - Bandit for Python security issues
+  - repo: https://github.com/pycqa/bandit
+    rev: 1.8.6
+    hooks:
+      - id: bandit
+        args: ['-r', 'src/']
+        exclude: 'tests/'
+
+  # Run pytest unit tests to verify code changes
+  - repo: local
+    hooks:
+      - id: pytest-unit
+        name: pytest-unit
+        entry: uv run python -m pytest tests/unit/ -v
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+  # Secrets detection with TruffleHog
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.90.8
+    hooks:
+      - id: trufflehog
+        name: TruffleHog Secrets Scan
+        description: Detect secrets in your codebase
+        entry: trufflehog
+        language: system
+        stages: [pre-commit, pre-push]
+        args:
+          - 'filesystem'
+          - '.'
+          - '--exclude-paths=.trufflehogignore'
+          - '--fail'
+          - '--no-update'
+        pass_filenames: false
+
+# Global configuration
+default_language_version:
+  python: python3
+
+# Minimum pre-commit version
+minimum_pre_commit_version: 4.3.0

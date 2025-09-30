@@ -49,22 +49,22 @@ from src.core.interfaces.packages_feed import PackagesFeed
 ```python
 class ServiceImplementation(AbstractInterface):
     """Concrete implementation of service interface.
-    
+
     Args:
         config: Configuration object
         logger: Logger instance
     """
-    
+
     def __init__(self, config: Config, logger: logging.Logger):
         self._config = config
         self._logger = logger
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def __aenter__(self):
         """Async context manager entry."""
         self._session = aiohttp.ClientSession()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         if self._session:
@@ -76,10 +76,10 @@ class ServiceImplementation(AbstractInterface):
 ```python
 async def risky_operation(self) -> Result:
     """Perform operation that might fail.
-    
+
     Returns:
         Result object with success/failure status
-        
+
     Raises:
         ServiceUnavailableError: When external service is down
     """
@@ -118,24 +118,24 @@ Use Google-style docstrings:
 ```python
 def complex_function(param1: str, param2: int, param3: Optional[bool] = None) -> Dict[str, Any]:
     """Brief description of function purpose.
-    
+
     Longer description if needed. Explain the business logic,
     any side effects, or important implementation details.
-    
+
     Args:
         param1: Description of first parameter
-        param2: Description of second parameter  
+        param2: Description of second parameter
         param3: Optional parameter description. Defaults to None.
-        
+
     Returns:
         Dictionary containing result data with keys:
         - 'status': Operation status string
         - 'data': Processed data object
-        
+
     Raises:
         ValueError: When param1 is empty
         ServiceError: When external service fails
-        
+
     Example:
         >>> result = complex_function("test", 42)
         >>> print(result['status'])
@@ -168,11 +168,11 @@ All external dependencies must be injected, never instantiated directly:
 class SecurityScanner:
     def __init__(self):
         self.feed = OSVFeed()  # Hard dependency
-        
+
 # ✅ Correct - Dependency injection
 class SecurityScanner:
-    def __init__(self, 
-                 feed: PackagesFeed, 
+    def __init__(self,
+                 feed: PackagesFeed,
                  registry: PackagesRegistryService):
         self._feed = feed
         self._registry = registry
@@ -187,12 +187,12 @@ from abc import ABC, abstractmethod
 
 class PackagesFeed(ABC):
     """Abstract interface for malicious package feeds."""
-    
+
     @abstractmethod
     async def fetch_malicious_packages(self) -> List[MaliciousPackage]:
         """Fetch current malicious packages."""
         pass
-    
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if feed service is available."""
@@ -206,12 +206,12 @@ Use factories for complex object creation:
 ```python
 class ServiceFactory:
     """Factory for creating service instances."""
-    
+
     @staticmethod
     async def create_packages_feed(config: Config) -> PackagesFeed:
         """Create packages feed based on configuration."""
         feed_type = config.packages_feed.type
-        
+
         if feed_type == "osv":
             return OSVFeed(config.packages_feed, logging.getLogger("OSVFeed"))
         elif feed_type == "custom":
@@ -241,11 +241,11 @@ async def config_validate(self) -> bool:
     try:
         # UI presentation only
         self.console.print("🔍 Validating Configuration", style="bold cyan")
-        
+
         # Delegate business logic to use case
         config_usecase = ConfigurationManagementUseCase(...)
         success, validation_results = await config_usecase.validate_configuration()
-        
+
         # Handle presentation of results
         self._display_validation_results(validation_results)
         return success
@@ -259,7 +259,7 @@ async def config_validate(self) -> bool:
     # Direct configuration loading and validation logic
     config_loader = ConfigLoader(...)
     config = config_loader.load()
-    
+
     # Complex validation rules and business logic
     if config.packages_registry.enabled:
         if not config.jfrog_base_url:
@@ -298,19 +298,19 @@ async def command_handler(self, args) -> bool:
     try:
         # 1. Parse and prepare arguments
         params = self._extract_parameters(args)
-        
+
         # 2. Create use case instance
         use_case = SomeUseCase(self.services, self.config)
-        
+
         # 3. Execute business logic
         success, result = await use_case.perform_operation(params)
-        
+
         # 4. Present results
         if success:
             self._display_success(result)
         else:
             self._display_error(result)
-        
+
         return success
     except Exception as e:
         self.console.print(f"❌ Error: {e}", style="red")
@@ -408,7 +408,7 @@ from src.core.entities import MaliciousPackage, ScanResult, ScanStatus
 
 class TestSecurityScanner:
     """Test suite for SecurityScanner use case."""
-    
+
     @pytest.fixture
     def mock_packages_feed(self):
         """Mock packages feed service."""
@@ -416,9 +416,9 @@ class TestSecurityScanner:
         mock.fetch_malicious_packages.return_value = []
         mock.health_check.return_value = True
         return mock
-    
+
     @pytest.fixture
-    def security_scanner(self, mock_packages_feed, mock_packages_registry, 
+    def security_scanner(self, mock_packages_feed, mock_packages_registry,
                         mock_notification_service, mock_storage_service):
         """Create security scanner with mocked dependencies."""
         return SecurityScanner(
@@ -427,9 +427,9 @@ class TestSecurityScanner:
             notification_service=mock_notification_service,
             storage_service=mock_storage_service
         )
-    
+
     @pytest.mark.asyncio
-    async def test_execute_scan_success_no_new_packages(self, security_scanner, 
+    async def test_execute_scan_success_no_new_packages(self, security_scanner,
                                                         mock_packages_feed,
                                                         mock_packages_registry,
                                                         mock_storage_service,
@@ -439,10 +439,10 @@ class TestSecurityScanner:
         mock_packages_feed.fetch_malicious_packages.return_value = [sample_malicious_package]
         mock_packages_registry.check_existing_packages.return_value = [sample_malicious_package]
         mock_packages_registry.block_packages.return_value = []
-        
+
         # Act
         result = await security_scanner.execute_scan()
-        
+
         # Assert
         assert result.status == ScanStatus.SUCCESS
         assert result.packages_scanned == 1
@@ -468,7 +468,7 @@ Test individual providers directly against real external APIs:
 @pytest.mark.integration
 class TestJFrogProviderIntegration:
     """Test JFrog provider directly against real API."""
-    
+
     @pytest_asyncio.fixture
     async def jfrog_provider(self, config):
         """Create provider directly with configuration."""
@@ -478,13 +478,13 @@ class TestJFrogProviderIntegration:
         )
         async with provider:
             yield provider
-    
+
     async def test_api_contract_compliance(self, jfrog_provider):
         """Verify provider correctly implements external API contract."""
         # Test real API communication, data transformation, error handling
 ```
 
-**Purpose**: 
+**Purpose**:
 - Validate provider implementation against real external services
 - Test API contract compliance and data transformation
 - Isolate provider-specific issues for faster debugging
@@ -496,12 +496,12 @@ Test the complete dependency injection and factory creation flow:
 @pytest.mark.integration
 class TestRegistryFactoryIntegration:
     """Test complete registry creation via dependency injection."""
-    
+
     async def test_provider_creation_via_factory(self, config):
         """Test full Config → Factory → Provider → API flow."""
         registry_factory = RegistryFactory(config)
         registry = await registry_factory.create_registry("jfrog")
-        
+
         # Test that factory-created provider works correctly
         result = await registry.search_packages("axios", "npm")
         assert isinstance(result, list)
@@ -519,12 +519,12 @@ Test complete application workflows with real providers:
 @pytest.mark.integration
 class TestSecurityScannerIntegration:
     """Test complete security scanning workflow."""
-    
+
     async def test_end_to_end_scan_with_real_providers(self, config):
         """Test complete scan workflow with real JFrog and OSV."""
         # Create scanner with real providers via DI
         scanner = await SecurityScannerFactory.create(config)
-        
+
         # Test complete workflow
         scan_result = await scanner.execute_scan()
         assert scan_result.is_successful
@@ -538,7 +538,7 @@ class TestSecurityScannerIntegration:
 #### Integration Test Selection Guidelines
 
 **For Provider Development**: Start with Level 1 (Provider Integration)
-**For Feature Development**: Use Level 2 (Factory Integration) 
+**For Feature Development**: Use Level 2 (Factory Integration)
 **For Release Validation**: Include Level 3 (Use Case Integration)
 **For CI/CD Pipelines**: Use Level 1 only (faster, more focused)
 
@@ -569,12 +569,12 @@ All integration test levels must include:
 @pytest.mark.integration
 class TestServiceIntegration:
     """Integration tests using centralized fixtures."""
-    
+
     def test_service_functionality(self, test_config, test_malicious_packages):
         """Test with centralized configuration and test data."""
         # Use test_config instead of ConfigLoader(...)
         service_factory = ServiceFactory(test_config)
-        
+
         # Use test_malicious_packages instead of creating local data
         assert len(test_malicious_packages) == 3
 ```
@@ -603,19 +603,19 @@ All integration tests must use the `@pytest.mark.integration` marker:
 @pytest.mark.integration
 class TestJFrogIntegration:
     """Integration tests for JFrog Artifactory provider."""
-    
+
     @pytest.fixture(scope="class")
     def config(self):
         """Load integration test configuration."""
         if os.getenv("SKIP_INTEGRATION_TESTS", "false").lower() == "true":
             pytest.skip("Integration tests disabled via SKIP_INTEGRATION_TESTS")
-        
+
         config_loader = ConfigLoader()
         config = config_loader.load()
-        
+
         if not config.jfrog_base_url:
             pytest.skip("JFrog configuration not available")
-            
+
         return config
 ```
 
@@ -662,11 +662,11 @@ async def test_fetch_npm_logs(self, osv_feed):
     """Test fetching npm vulnerability logs - REQUIRED."""
     malicious_packages = await osv_feed.fetch_malicious_packages(max_packages=10)
     npm_packages = [pkg for pkg in malicious_packages if pkg.ecosystem == "npm"]
-    
+
     # Log the results as required
     logging.info(f"OSV Feed Integration Test - NPM Logs:")
     logging.info(f"Found {len(npm_packages)} npm malicious packages")
-    
+
     for i, pkg in enumerate(npm_packages[:3], 1):
         logging.info(f"NPM Package {i}: {pkg.name} (ID: {pkg.id})")
 ```
@@ -687,8 +687,8 @@ def test_cli_package_scanning(self, cli_path):
     # Test with existing package
     returncode, stdout, stderr = self.run_cli_command(cli_path, ["scan", "axios"])
     # Validate output...
-    
-    # Test with non-existing package  
+
+    # Test with non-existing package
     returncode, stdout, stderr = self.run_cli_command(cli_path, ["scan", "thispackagedoesntexist"])
     # Validate error handling...
 ```
@@ -701,7 +701,7 @@ Integration tests require special configuration management:
 # Run only unit tests (fast feedback)
 pytest tests/unit/
 
-# Run only integration tests  
+# Run only integration tests
 pytest tests/integration/
 
 # Run all tests
@@ -749,43 +749,43 @@ from src.providers.[category].[provider] import [ProviderClass]
 @pytest.mark.integration
 class Test[Provider]Integration:
     """Integration tests for [Provider] functionality.
-    
+
     These tests require actual [Provider] credentials and should not run in CI.
     Set SKIP_INTEGRATION_TESTS=true to skip these tests.
     """
-    
+
     @pytest.fixture(scope="class")
     def config(self):
         """Load configuration for integration tests."""
         if os.getenv("SKIP_INTEGRATION_TESTS", "false").lower() == "true":
             pytest.skip("Integration tests disabled via SKIP_INTEGRATION_TESTS")
-        
+
         config_loader = ConfigLoader()
         config = config_loader.load()
-        
+
         # Verify required configuration
         if not config.[required_config]:
             pytest.skip("[Provider] configuration not available")
-            
+
         return config
-    
+
     @pytest.fixture
     async def provider_instance(self, config):
         """Create provider instance."""
         provider = [ProviderClass](
             # Configuration parameters...
         )
-        
+
         async with provider:
             yield provider
-    
+
     @pytest.mark.asyncio
     async def test_health_check(self, provider_instance):
         """Test provider health check."""
         is_healthy = await provider_instance.health_check()
         assert is_healthy, "[Provider] should be healthy"
         logging.info("✓ [Provider] health check passed")
-    
+
     # Additional test methods...
 ```
 
@@ -801,7 +801,7 @@ class Test[Provider]Integration:
 ```python
 test_malicious_packages          # Master fixture with 3 packages
 ├── sample_malicious_package     # Points to PyPI package (index 2)
-├── sample_npm_malicious_package # Points to npm package (index 0)  
+├── sample_npm_malicious_package # Points to npm package (index 0)
 ├── memory_feed_with_packages    # Uses test_malicious_packages
 └── null_registry_with_packages  # Uses test_registry_packages
 
@@ -830,7 +830,7 @@ def test_service(self, test_config):
 # ❌ Wrong - Creating local test data
 def test_with_packages(self):
     packages = [MaliciousPackage(...), MaliciousPackage(...)]
-    
+
 # ✅ Correct - Using centralized fixtures
 def test_with_packages(self, test_malicious_packages):
     # Use consolidated test data
@@ -906,14 +906,14 @@ When AI assistants contribute to this project, they must follow these specific g
 # ✅ AI should create code like this
 class NewFeature:
     """AI-generated feature following project standards.
-    
+
     This class implements X functionality while maintaining
     clean architecture principles and full test coverage.
     """
-    
+
     def __init__(self, dependency: AbstractInterface):
         self._dependency = dependency
-        
+
     async def process(self, input_data: InputType) -> OutputType:
         """Process input according to business rules."""
         # Clear, well-documented implementation
@@ -969,6 +969,7 @@ Before submitting AI-generated code, verify:
 
 All code must pass these quality checks:
 
+**Manual Quality Checks:**
 ```bash
 # Type checking
 mypy src/
@@ -986,6 +987,34 @@ pytest --cov=src --cov-fail-under=90
 # Integration tests
 pytest tests/integration/
 ```
+
+**Automated Pre-commit Hooks:**
+Pre-commit hooks automatically run quality checks on every commit:
+```bash
+# Install once per development environment
+uv run pre-commit install
+
+# Run all hooks manually
+uv run pre-commit run --all-files
+
+# Update to latest hook versions
+uv run pre-commit autoupdate
+```
+
+The pre-commit framework includes:
+- **Code formatting**: Black, isort
+- **Code quality**: Flake8 linting
+- **Security**: Bandit vulnerability scan, TruffleHog secrets detection
+- **File validation**: YAML/JSON syntax, trailing whitespace
+
+**CI/CD Integration:**
+For continuous integration, run pre-commit in your pipeline:
+```bash
+# In CI environment
+uv run pre-commit run --all-files
+```
+
+This ensures code quality standards are maintained consistently across all environments.
 
 ### Performance Standards
 
@@ -1017,7 +1046,7 @@ import uuid
 
 class RegistryModel(Base):
     __tablename__ = 'registries'
-    
+
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
 ```
@@ -1031,7 +1060,7 @@ class RegistryModel(Base):
 # ✅ Correct - UUID foreign keys with proper naming
 class ScanResultModel(Base):
     __tablename__ = 'scan_results'
-    
+
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     registry_id = Column(String(36), ForeignKey('registries.id', ondelete='CASCADE'), nullable=False)
 ```
@@ -1046,18 +1075,18 @@ class ScanResultModel(Base):
 # ✅ Complete table example with all standards
 class MaliciousPackageModel(Base):
     __tablename__ = 'malicious_packages'
-    
+
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     scan_result_id = Column(String(36), ForeignKey('scan_results.id', ondelete='CASCADE'), nullable=False)
     package_name = Column(String(255), nullable=False, index=True)
     package_version = Column(String(100), nullable=False)
     ecosystem = Column(String(50), nullable=False, index=True)
-    
+
     # Audit fields (required)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     deleted_at = Column(DateTime, nullable=True)  # Soft delete
-    
+
     # Relationships
     scan_result = relationship("ScanResultModel", back_populates="malicious_packages")
 ```
@@ -1077,7 +1106,7 @@ class JFrogRegistry:
     def __init__(self, config: JFrogConfig):
         self._api_key = config.api_key  # From environment
         self._base_url = config.base_url
-        
+
     async def _make_authenticated_request(self, endpoint: str):
         headers = {"X-JFrog-Art-Api": self._api_key}
         # Never log headers containing credentials
@@ -1086,7 +1115,7 @@ class JFrogRegistry:
 # ❌ Wrong way
 def get_packages():
     api_key = "AKCp5..." # Hard-coded credential
-    response = requests.get(f"https://company.jfrog.io/api/packages", 
+    response = requests.get(f"https://company.jfrog.io/api/packages",
                           headers={"Authorization": f"Bearer {api_key}"})
 ```
 
@@ -1097,7 +1126,7 @@ def validate_package_name(name: str) -> bool:
     """Validate package name to prevent injection attacks."""
     if not name or len(name) > 255:
         return False
-    
+
     # Only allow alphanumeric, hyphens, dots, underscores
     import re
     pattern = r'^[a-zA-Z0-9._-]+$'
@@ -1131,5 +1160,5 @@ This document should be updated when:
 - Security requirements evolve
 - AI assistant capabilities expand
 
-**Last Updated**: December 2023  
+**Last Updated**: December 2023
 **Next Review**: March 2024

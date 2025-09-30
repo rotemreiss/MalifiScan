@@ -76,7 +76,7 @@ Malifiscan supports 10 major package ecosystems with varying levels of OSV scann
 - **JFrog Scanning**: Searches for packages in JFrog Artifactory repositories using AQL
 - **JFrog Blocking**: Creates exclusion patterns to block package downloads
   - **✅ Full**: Complete blocking support with ecosystem-specific patterns
-  - **✅ Basic**: Good support with standard file patterns  
+  - **✅ Basic**: Good support with standard file patterns
   - **⚠️ Limited**: Basic patterns with limited blocking effectiveness
 
 ### Blocking Pattern Examples
@@ -85,7 +85,7 @@ Different ecosystem support levels create different types of exclusion patterns 
 
 **✅ Full Support (Precise Patterns)**
 - **npm**: `axios/-/axios-1.12.2.tgz` (targets exact tarball file)
-- **PyPI**: `simple/requests/requests-2.28.1*` (follows PyPI simple API structure)  
+- **PyPI**: `simple/requests/requests-2.28.1*` (follows PyPI simple API structure)
 - **Maven**: `com/example/evil-lib/1.0.0/**` (follows GAV structure: GroupId/ArtifactId/Version)
 - **Go**: `github.com/user/module/@v/v1.2.3*` (follows Go module proxy structure)
 - **NuGet**: `packagename/1.0.0/**` (follows NuGet repository layout)
@@ -129,7 +129,7 @@ When you block a package, Malifiscan:
 # Block a specific package version
 uv run python cli.py registry block axios npm 1.12.2
 
-# Block all versions of a package  
+# Block all versions of a package
 uv run python cli.py registry block malicious-pkg npm "*"
 
 # View currently blocked packages
@@ -165,7 +165,7 @@ UV is a fast Python package manager that provides better dependency resolution a
    ```bash
    git clone <repository-url>
    cd malifiscan
-   
+
    # Initialize UV project and install dependencies
    uv init --no-readme --no-pin-python
    uv sync --dev
@@ -175,7 +175,7 @@ UV is a fast Python package manager that provides better dependency resolution a
    ```bash
    # Generate local configuration files from templates
    uv run python cli.py config init
-   
+
    # Edit the generated files with your settings:
    # - .env: Add your JFrog credentials
    # - config.local.yaml: Customize any settings
@@ -193,11 +193,11 @@ UV is a fast Python package manager that provides better dependency resolution a
    ```bash
    git clone <repository-url>
    cd malifiscan
-   
+
    # Create and activate virtual environment
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
-   
+
    # Upgrade pip and install dependencies
    pip install --upgrade pip
    pip install -r requirements.txt
@@ -207,7 +207,7 @@ UV is a fast Python package manager that provides better dependency resolution a
    ```bash
    # Generate local configuration files from templates
    python cli.py config init
-   
+
    # Edit the generated files with your settings:
    # - .env: Add your JFrog credentials
    # - config.local.yaml: Customize any settings
@@ -444,7 +444,7 @@ packages_feed:
   enabled: true
 
 packages_registry:
-  type: jfrog  
+  type: jfrog
   enabled: true
 
 notification_service:
@@ -464,7 +464,7 @@ Malifiscan supports configurable notifications to alert your team when malicious
 # Test basic notification functionality
 uv run python cli.py notifications check
 
-# Test with realistic malicious package payload  
+# Test with realistic malicious package payload
 uv run python cli.py notifications check --malicious
 ```
 

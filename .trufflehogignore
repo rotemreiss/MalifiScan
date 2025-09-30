@@ -1,0 +1,56 @@
+# TruffleHog ignore patterns (using regex)
+# Exclude common false positives and test data
+
+# Virtual environments and dependencies
+.*\.venv.*
+.*__pycache__.*
+.*\.pytest_cache.*
+.*node_modules.*
+.*\.egg-info.*
+.*/build/.*
+.*/dist/.*
+.*\.coverage.*
+
+# Test files (often contain fake credentials)
+.*test.*\.py
+.*conftest\.py
+
+# Configuration examples and templates (may contain example credentials)
+.*\.env.*
+.*config\.local\.yaml\.example
+.*\.example
+.*\.template
+
+# Documentation
+.*README\.md
+.*CHANGELOG\.md
+.*/docs/.*
+.*/art/.*
+
+# Git and CI files
+.*\.git.*
+.*\.github.*
+.*\.gitignore
+
+# Lock files and dependencies
+.*uv\.lock
+.*poetry\.lock
+.*requirements.*\.txt
+
+# IDE files
+.*\.vscode.*
+.*\.idea.*
+.*\.swp
+.*\.swo
+
+# Log and database files
+.*\.log
+.*\.db
+.*\.sqlite.*
+
+# Project specific paths that may contain test data
+.*/scan_results/.*
+.*/data/.*
+
+# Virtual environment packages (common false positives)
+.*/site-packages/.*

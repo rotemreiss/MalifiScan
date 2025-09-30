@@ -27,7 +27,7 @@ packages_feed:
           severity: "CRITICAL"
         published_at: "2024-09-29T09:00:00Z"
         modified_at: "2024-09-29T09:00:00Z"
-      
+
       - name: "critical-match-2"
         version: "2.5.0"
         ecosystem: "npm"
@@ -122,7 +122,7 @@ packages_registry:
         database_specific: {}
         published_at: "2024-09-29T06:00:00Z"
         modified_at: "2024-09-29T06:00:00Z"
-      
+
       - name: "critical-match-2"
         version: "2.5.0"
         ecosystem: "npm"

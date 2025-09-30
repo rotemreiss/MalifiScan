@@ -78,11 +78,11 @@ The CLI serves only as a presentation layer that:
 async def config_validate(self) -> bool:
     # UI/presentation only
     self.console.print("🔍 Validating...", style="cyan")
-    
+
     # Delegate to use case
     usecase = ConfigurationManagementUseCase(...)
     success, results = await usecase.validate_configuration()
-    
+
     # Display results
     self._display_results(results)
     return success

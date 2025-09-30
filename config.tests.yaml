@@ -64,13 +64,13 @@ security:
   max_package_name_length: 100
   max_version_length: 50
   allowed_ecosystems: ["npm", "PyPI", "Maven", "Go", "NuGet", "RubyGems"]
-  
+
 # Performance settings optimized for testing
 performance:
   max_concurrent_requests: 2  # Lower concurrency for stable tests
   request_timeout: 5
   batch_size: 10
-  
+
 # Test-specific feature flags
 features:
   enable_caching: false  # Disable caching for predictable test results
@@ -80,7 +80,7 @@ features:
 # JFrog configuration (for JFrog-specific tests, using environment variables)
 # These will be overridden by actual credentials in JFrog-specific test configs
 jfrog_base_url: "https://test.jfrog.example.com"
-jfrog_username: "test-user"  
+jfrog_username: "test-user"
 jfrog_password: "test-password"
 jfrog_api_key: "test-api-key"
 
