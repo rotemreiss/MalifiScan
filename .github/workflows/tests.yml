@@ -31,12 +31,10 @@ jobs:
     - name: Run pre-commit checks
       run: |
         # Run all hooks except trufflehog and pytest-unit
-        uv run pre-commit run --all-files \
+        SKIP=trufflehog,pytest-unit uv run pre-commit run --all-files \
           --hook-stage push \
           --hook-stage commit \
-          --config .pre-commit-config.yaml \
-          --skip trufflehog \
-          --skip pytest-unit
+          --config .pre-commit-config.yaml
 
   unit-tests:
     # Run only if pre-commit checks pass
