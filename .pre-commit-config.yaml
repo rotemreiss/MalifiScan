@@ -46,16 +46,16 @@ repos:
         args: ['-r', 'src/']
         exclude: 'tests/'
 
-  # Run pytest unit tests to verify code changes
+  # Run pytest unit tests to verify code changes, but only if relevant files changed
   - repo: local
     hooks:
       - id: pytest-unit
         name: pytest-unit
         entry: uv run python -m pytest tests/unit/ -v
         language: system
-        types: [python]
         pass_filenames: false
-        always_run: true
+        types_or: [python, yaml]
+        files: '\.(py|yml|yaml)$|pyproject\.toml$|requirements.*\.txt$|uv\.lock$'
 
   # Secrets detection with TruffleHog
   - repo: https://github.com/trufflesecurity/trufflehog
