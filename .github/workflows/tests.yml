@@ -31,7 +31,7 @@ jobs:
     - name: Run pre-commit checks
       run: |
         # Run all hooks except trufflehog and pytest-unit
-        pre-commit run --all-files \
+        uv run pre-commit run --all-files \
           --hook-stage push \
           --hook-stage commit \
           --config .pre-commit-config.yaml \
