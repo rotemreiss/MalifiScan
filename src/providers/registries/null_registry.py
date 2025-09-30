@@ -20,6 +20,9 @@ class NullRegistry(PackagesRegistryService):
             packages: Optional list of packages as existing in registry for testing
         """
         self.name = "NullRegistry"
+        self.base_url = (
+            "https://null-registry.example.com"  # Required for test compatibility
+        )
         self._packages = packages or []
 
     async def check_existing_packages(
@@ -180,6 +183,38 @@ class NullRegistry(PackagesRegistryService):
             f"NullRegistry: Would discover repositories for {ecosystem} (registry disabled)"
         )
         return []
+
+    async def get_supported_ecosystems(self) -> List[str]:
+        """
+        Get list of ecosystems supported by this registry.
+
+        Returns:
+            List of ecosystem names that this registry can handle
+        """
+        return [
+            "npm",
+            "PyPI",
+            "Maven",
+            "Go",
+            "NuGet",
+            "RubyGems",
+            "crates.io",
+            "Packagist",
+            "Pub",
+            "Hex",
+        ]
+
+    def get_ecosystem_blocking_support(self, ecosystem: str) -> dict:
+        """
+        Get blocking support information for an ecosystem.
+
+        Args:
+            ecosystem: Ecosystem name
+
+        Returns:
+            Dict with support information
+        """
+        return {"scanning": True, "blocking": True, "pattern_quality": "full"}
 
     async def close(self) -> None:
         """

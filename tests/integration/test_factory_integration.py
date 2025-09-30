@@ -72,8 +72,8 @@ class TestServiceFactoryIntegration:
         self, registry_factory, config
     ):
         """Test that configuration is properly propagated through factory."""
-        if not config.jfrog_base_url:
-            pytest.skip("JFrog not configured")
+        if not config.jfrog_base_url or config.packages_registry.type != "jfrog":
+            pytest.skip("JFrog not configured or registry type is not jfrog")
 
         registry = registry_factory.create_packages_registry()
 

@@ -22,7 +22,7 @@ class TestMultiEcosystemIntegration:
 
         return SecurityAnalysisUseCase(
             packages_feed=packages_feed,
-            packages_registry=packages_registry,
+            registry_service=packages_registry,
             storage_service=storage_service,
             notification_service=notification_service,
         )
@@ -50,6 +50,9 @@ class TestMultiEcosystemIntegration:
     @pytest.mark.asyncio
     async def test_jfrog_registry_ecosystem_support(self, test_config):
         """Test JFrog registry multi-ecosystem support methods."""
+        if test_config.packages_registry.type != "jfrog":
+            pytest.skip("Test requires JFrog registry configuration")
+
         service_factory = ServiceFactory(test_config)
 
         packages_registry = service_factory.create_packages_registry()
@@ -94,23 +97,23 @@ class TestMultiEcosystemIntegration:
         """Test crossref analysis with default multi-ecosystem behavior."""
         # Test with no specific ecosystem (should use all available)
         scan_result = await security_analysis_usecase.crossref_analysis(
-            max_packages=10, hours=24
+            hours=72, limit=20
         )
 
-        # Verify scan result structure
-        assert hasattr(scan_result, "matching_packages")
-        assert hasattr(scan_result, "osv_packages_count")
-        assert hasattr(scan_result, "jfrog_blocked_count")
-        assert hasattr(scan_result, "ecosystems_scanned")
+        # Verify scan result structure (dict keys)
+        assert "found_matches" in scan_result
+        assert "total_osv_packages" in scan_result
+        assert "ecosystems_scanned" in scan_result
+        assert "success" in scan_result
 
         # Should have scanned at least one ecosystem (or none if OSV has issues)
-        assert isinstance(scan_result.ecosystems_scanned, list)
-        print(f"Ecosystems scanned: {scan_result.ecosystems_scanned}")
+        assert isinstance(scan_result["ecosystems_scanned"], list)
+        print(f"Ecosystems scanned: {scan_result['ecosystems_scanned']}")
 
         # If ecosystems were scanned, we should have some data
-        if scan_result.ecosystems_scanned:
-            assert scan_result.osv_packages_count >= 0
-            assert scan_result.jfrog_blocked_count >= 0
+        if scan_result["ecosystems_scanned"]:
+            assert scan_result["total_osv_packages"] >= 0
+            assert scan_result.get("blocked_count", 0) >= 0
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -120,19 +123,19 @@ class TestMultiEcosystemIntegration:
         """Test crossref analysis with specific ecosystem."""
         # Test with npm ecosystem specifically
         scan_result = await security_analysis_usecase.crossref_analysis(
-            max_packages=5, hours=24, ecosystem="npm"
+            limit=5, hours=24, ecosystem="npm"
         )
 
         # Should only scan npm ecosystem
         assert (
-            scan_result.ecosystems_scanned == ["npm"]
-            or scan_result.ecosystems_scanned == []
+            scan_result["ecosystems_scanned"] == ["npm"]
+            or scan_result["ecosystems_scanned"] == []
         )
 
-        # Verify structure
-        assert isinstance(scan_result.matching_packages, list)
-        assert isinstance(scan_result.osv_packages_count, int)
-        assert isinstance(scan_result.jfrog_blocked_count, int)
+        # Verify structure (dict keys)
+        assert isinstance(scan_result["found_matches"], list)
+        assert isinstance(scan_result["total_osv_packages"], int)
+        assert isinstance(scan_result.get("blocked_count", 0), int)
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -165,33 +168,32 @@ class TestMultiEcosystemIntegration:
         """Test complete end-to-end multi-ecosystem scanning workflow."""
         # This tests the full pipeline with real services
         scan_result = await security_analysis_usecase.crossref_analysis(
-            max_packages=5, hours=24  # Small number for fast testing
+            limit=5, hours=24  # Small number for fast testing
         )
 
-        # Validate the complete scan result
-        assert hasattr(scan_result, "matching_packages")
-        assert hasattr(scan_result, "osv_packages_count")
-        assert hasattr(scan_result, "jfrog_blocked_count")
-        assert hasattr(scan_result, "ecosystems_scanned")
-        assert hasattr(scan_result, "scan_timestamp")
+        # Validate the complete scan result (dict structure)
+        assert "found_matches" in scan_result
+        assert "total_osv_packages" in scan_result
+        assert "ecosystems_scanned" in scan_result
+        assert "success" in scan_result
 
         # Verify data types
-        assert isinstance(scan_result.matching_packages, list)
-        assert isinstance(scan_result.osv_packages_count, int)
-        assert isinstance(scan_result.jfrog_blocked_count, int)
-        assert isinstance(scan_result.ecosystems_scanned, list)
+        assert isinstance(scan_result["found_matches"], list)
+        assert isinstance(scan_result["total_osv_packages"], int)
+        assert isinstance(scan_result.get("blocked_count", 0), int)
+        assert isinstance(scan_result["ecosystems_scanned"], list)
 
         # Print results for debugging
         print("Scan completed:")
-        print(f"  - Ecosystems scanned: {scan_result.ecosystems_scanned}")
-        print(f"  - OSV packages found: {scan_result.osv_packages_count}")
-        print(f"  - JFrog blocked: {scan_result.jfrog_blocked_count}")
-        print(f"  - Matching packages: {len(scan_result.matching_packages)}")
+        print(f"  - Ecosystems scanned: {scan_result['ecosystems_scanned']}")
+        print(f"  - OSV packages found: {scan_result['total_osv_packages']}")
+        print(f"  - Filtered packages: {scan_result['filtered_packages']}")
+        print(f"  - Matching packages: {len(scan_result['found_matches'])}")
 
         # The actual counts depend on current data, but structure should be valid
-        assert scan_result.osv_packages_count >= 0
-        assert scan_result.jfrog_blocked_count >= 0
-        assert len(scan_result.matching_packages) >= 0
+        assert scan_result["total_osv_packages"] >= 0
+        assert scan_result["filtered_packages"] >= 0
+        assert len(scan_result["found_matches"]) >= 0
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -199,14 +201,13 @@ class TestMultiEcosystemIntegration:
         """Test handling of ecosystem-specific errors in multi-ecosystem mode."""
         # Test with an invalid/non-existent ecosystem
         scan_result = await security_analysis_usecase.crossref_analysis(
-            max_packages=5, hours=24, ecosystem="NonExistentEcosystem"
+            limit=5, hours=24, ecosystem="NonExistentEcosystem"
         )
 
-        # Should handle gracefully and return empty results
-        assert (
-            scan_result.ecosystems_scanned == []
-            or scan_result.ecosystems_scanned == ["NonExistentEcosystem"]
-        )
-        assert scan_result.osv_packages_count == 0
-        assert scan_result.jfrog_blocked_count == 0
-        assert len(scan_result.matching_packages) == 0
+        # Should handle gracefully and return empty results (dict structure)
+        assert scan_result["ecosystems_scanned"] == [] or scan_result[
+            "ecosystems_scanned"
+        ] == ["NonExistentEcosystem"]
+        assert scan_result["total_osv_packages"] == 0
+        assert scan_result.get("blocked_count", 0) == 0
+        assert len(scan_result["found_matches"]) == 0

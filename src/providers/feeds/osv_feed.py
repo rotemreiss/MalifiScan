@@ -91,20 +91,37 @@ class OSVFeed(PackagesFeed):
                 logger.info(f"Fetching from specified ecosystems: {ecosystems}")
 
             all_packages = []
+            remaining_limit = max_packages
 
             # Process each ecosystem
             for ecosystem in ecosystems:
                 try:
                     logger.info(f"Processing ecosystem: {ecosystem}")
+
+                    # If we have a global limit, calculate how many we can still fetch
+                    ecosystem_limit = (
+                        remaining_limit if remaining_limit is not None else None
+                    )
+
                     ecosystem_packages = (
                         await self._fetch_malicious_packages_for_ecosystem(
-                            ecosystem, max_packages, hours
+                            ecosystem, ecosystem_limit, hours
                         )
                     )
                     all_packages.extend(ecosystem_packages)
                     logger.info(
                         f"Fetched {len(ecosystem_packages)} packages from {ecosystem}"
                     )
+
+                    # Update remaining limit
+                    if remaining_limit is not None:
+                        remaining_limit -= len(ecosystem_packages)
+                        if remaining_limit <= 0:
+                            logger.info(
+                                f"Reached max_packages limit of {max_packages}, stopping"
+                            )
+                            break
+
                 except Exception as e:
                     logger.warning(
                         f"Failed to fetch packages from ecosystem {ecosystem}: {e}"

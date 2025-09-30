@@ -285,7 +285,12 @@ def test_config(test_config_path):
     """Load test configuration for integration tests."""
     from src.config.config_loader import ConfigLoader
 
-    config_loader = ConfigLoader(config_file=test_config_path)
+    config_loader = ConfigLoader(
+        config_file=test_config_path,
+        local_config_file=None,  # Disable local config overrides for tests
+        load_env_file=False,  # Disable .env file loading for tests
+        use_env_vars=False,  # Disable environment variable overrides for tests
+    )
     return config_loader.load()
 
 

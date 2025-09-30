@@ -168,3 +168,7 @@ class MemoryFeed(PackagesFeed):
 
     def __repr__(self) -> str:
         return f"MemoryFeed(packages={len(self._packages)})"
+
+    async def close(self):
+        """Close resources - no persistent resources to close for memory feed."""
+        logger.debug("MemoryFeed closed")
