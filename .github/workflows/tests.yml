@@ -1,0 +1,91 @@
+name: Tests & Quality Checks
+
+# Define the workflow triggers
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Set up Python
+      run: uv python install 3.13
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Install pre-commit
+      run: uv pip install pre-commit
+
+    - name: Run pre-commit checks
+      run: |
+        # Run all hooks except trufflehog and pytest-unit
+        pre-commit run --all-files \
+          --hook-stage push \
+          --hook-stage commit \
+          --config .pre-commit-config.yaml \
+          --skip trufflehog \
+          --skip pytest-unit
+
+  unit-tests:
+    # Run only if pre-commit checks pass
+    needs: pre-commit
+    if: ${{ success() || failure() && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    # Unit tests will only run if relevant files have changed
+    # This is handled by the paths-filter action below
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check for relevant changes
+      id: check-changes
+      uses: dorny/paths-filter@v2
+      with:
+        filters: |
+          python_changes:
+            - '**/*.py'
+            - '**/*.yml'
+            - '**/*.yaml'
+            - 'pyproject.toml'
+            - 'requirements*.txt'
+            - 'uv.lock'
+
+    - name: Install uv
+      if: steps.check-changes.outputs.python_changes == 'true'
+      uses: astral-sh/setup-uv@v3
+      with:
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      if: steps.check-changes.outputs.python_changes == 'true'
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      if: steps.check-changes.outputs.python_changes == 'true'
+      run: uv sync --dev
+
+    - name: Run unit tests
+      if: steps.check-changes.outputs.python_changes == 'true'
+      run: |
+        echo "Running unit tests because relevant files have changed"
+        uv run python -m pytest tests/ -m "not integration" --cov=src --cov-report=term-missing
+
+    - name: Skip unit tests
+      if: steps.check-changes.outputs.python_changes != 'true'
+      run: echo "Skipping unit tests as no relevant Python/config files were changed"

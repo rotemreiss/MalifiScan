@@ -40,12 +40,14 @@
 - Dependency injection is mandatory; never instantiate providers directly
 - Error handling: wrap external failures, log errors, never expose sensitive info
 - Security: credentials via env, input validation, no hardcoded secrets
+- **No trailing whitespace**: Ensure all lines are free of trailing whitespace to pass pre-commit checks
 
 ## 🚦 Quality Gates
 - Type check: `mypy src/`
 - Lint: `flake8 src/`, `black --check src/`
 - Security scan: `bandit -r src/`
 - Test coverage: `pytest --cov=src --cov-fail-under=90`
+- Pre-commit hooks: Ensure code passes all pre-commit checks, including trailing whitespace validation
 
 ## 🧩 Extending the System
 - To add a new provider/feed/registry/notification:
