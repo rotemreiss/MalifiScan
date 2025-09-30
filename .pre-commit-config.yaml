@@ -54,8 +54,8 @@ repos:
         entry: uv run python -m pytest tests/unit/ -v
         language: system
         pass_filenames: false
-        types_or: [python, yaml]
-        files: '\.(py|yml|yaml)$|pyproject\.toml$|requirements.*\.txt$|uv\.lock$'
+        types_or: [python]
+        files: '\.(py)$|pyproject\.toml$|requirements.*\.txt$|uv\.lock$'
 
   # Secrets detection with TruffleHog
   - repo: https://github.com/trufflesecurity/trufflehog
