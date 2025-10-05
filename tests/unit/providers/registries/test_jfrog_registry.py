@@ -417,3 +417,304 @@ class TestJFrogRegistryCore:
         with patch.object(jfrog_registry, "health_check", return_value=True):
             health = await jfrog_registry.health_check()
             assert health is True
+
+
+class TestEcosystemSpecificAQLQueries:
+    """Test suite for ecosystem-specific AQL query builders."""
+
+    def test_build_npm_aql_query_regular_package(self, jfrog_registry):
+        """Test AQL query building for regular npm packages."""
+        query = jfrog_registry._build_npm_aql_query("lodash", "npm-remote")
+        expected = 'items.find({\n                "repo": "npm-remote",\n                "$or": [\n                    {"path": {"$eq": ".npm/lodash"}},\n                    {"path": {"$match": ".npm/lodash/*"}}\n                ]\n            })'
+        assert query == expected
+
+    def test_build_npm_aql_query_scoped_package(self, jfrog_registry):
+        """Test AQL query building for scoped npm packages."""
+        query = jfrog_registry._build_npm_aql_query("@angular/core", "npm-remote")
+        expected = 'items.find({\n                "repo": "npm-remote",\n                "$or": [\n                    {"path": {"$eq": ".npm/@angular/core"}},\n                    {"path": {"$match": ".npm/@angular/core/*"}}\n                ]\n            })'
+        assert query == expected
+
+    def test_build_pypi_aql_query(self, jfrog_registry):
+        """Test AQL query building for PyPI packages."""
+        query = jfrog_registry._build_pypi_aql_query("Django", "pypi-remote")
+        expected = 'items.find({\n            "repo": "pypi-remote",\n            "path": {"$eq": "simple/django"}\n        })'
+        assert query == expected
+
+    def test_build_pypi_aql_query_with_underscore(self, jfrog_registry):
+        """Test AQL query building for PyPI packages with underscores."""
+        query = jfrog_registry._build_pypi_aql_query("Flask_Security", "pypi-remote")
+        expected = 'items.find({\n            "repo": "pypi-remote",\n            "path": {"$eq": "simple/flask-security"}\n        })'
+        assert query == expected
+
+    def test_build_maven_aql_query_with_gav(self, jfrog_registry):
+        """Test AQL query building for Maven packages with group:artifact."""
+        query = jfrog_registry._build_maven_aql_query(
+            "com.fasterxml.jackson.core:jackson-core", "maven-remote"
+        )
+        expected = 'items.find({\n                    "repo": "maven-remote",\n                    "path": {"$eq": "com/fasterxml/jackson/core/jackson-core"}\n                })'
+        assert query == expected
+
+    def test_build_maven_aql_query_artifact_only(self, jfrog_registry):
+        """Test AQL query building for Maven packages with artifact only."""
+        query = jfrog_registry._build_maven_aql_query("spring-core", "maven-remote")
+        expected = 'items.find({\n                "repo": "maven-remote",\n                "name": {"$eq": "spring-core"}\n            })'
+        assert query == expected
+
+    def test_build_generic_aql_query(self, jfrog_registry):
+        """Test AQL query building for generic packages."""
+        query = jfrog_registry._build_generic_aql_query(
+            "some-package", "generic-remote"
+        )
+        expected = 'items.find({\n            "repo": "generic-remote",\n            "name": {"$eq": "some-package"}\n        })'
+        assert query == expected
+
+
+class TestEcosystemSpecificExactMatching:
+    """Test suite for ecosystem-specific exact match validation."""
+
+    def test_npm_exact_match_regular_package(self, jfrog_registry):
+        """Test exact matching for regular npm packages."""
+        # Exact match cases
+        item = {"path": ".npm/lodash", "name": "package.json"}
+        assert jfrog_registry._is_npm_exact_match(item, "lodash")
+
+        item = {"path": ".npm/lodash/1.0.0", "name": "lodash-1.0.0.tgz"}
+        assert jfrog_registry._is_npm_exact_match(item, "lodash")
+
+        # Should reject partial matches that would cause false positives
+        item = {"path": ".npm/lodash-utils", "name": "package.json"}
+        assert not jfrog_registry._is_npm_exact_match(item, "lodash")
+
+        item = {"path": ".npm/my-lodash-fork", "name": "package.json"}
+        assert not jfrog_registry._is_npm_exact_match(item, "lodash")
+
+    def test_npm_exact_match_scoped_package(self, jfrog_registry):
+        """Test exact matching for scoped npm packages."""
+        # Exact match cases
+        item = {"path": ".npm/@angular/core", "name": "package.json"}
+        assert jfrog_registry._is_npm_exact_match(item, "@angular/core")
+
+        item = {"path": ".npm/@angular/core/12.0.0", "name": "angular-core-12.0.0.tgz"}
+        assert jfrog_registry._is_npm_exact_match(item, "@angular/core")
+
+        # Should reject similar scoped packages
+        item = {"path": ".npm/@angular/core-testing", "name": "package.json"}
+        assert not jfrog_registry._is_npm_exact_match(item, "@angular/core")
+
+    def test_pypi_exact_match(self, jfrog_registry):
+        """Test exact matching for PyPI packages."""
+        # Exact match cases
+        item = {"path": "simple/django", "name": "index.html"}
+        assert jfrog_registry._is_pypi_exact_match(item, "Django")
+
+        item = {"path": "simple/django/3.2.0", "name": "Django-3.2.0.tar.gz"}
+        assert jfrog_registry._is_pypi_exact_match(item, "Django")
+
+        # Should reject partial matches
+        item = {"path": "simple/django-rest-framework", "name": "index.html"}
+        assert not jfrog_registry._is_pypi_exact_match(item, "django")
+
+        # Test underscore normalization
+        item = {"path": "simple/flask-security", "name": "index.html"}
+        assert jfrog_registry._is_pypi_exact_match(item, "Flask_Security")
+
+    def test_maven_exact_match_with_gav(self, jfrog_registry):
+        """Test exact matching for Maven packages with group:artifact."""
+        # Exact match cases
+        item = {
+            "path": "com/fasterxml/jackson/core/jackson-core",
+            "name": "jackson-core-2.12.0.jar",
+        }
+        assert jfrog_registry._is_maven_exact_match(
+            item, "com.fasterxml.jackson.core:jackson-core"
+        )
+
+        item = {
+            "path": "com/fasterxml/jackson/core/jackson-core/2.12.0",
+            "name": "jackson-core-2.12.0.pom",
+        }
+        assert jfrog_registry._is_maven_exact_match(
+            item, "com.fasterxml.jackson.core:jackson-core"
+        )
+
+        # Should reject similar artifacts
+        item = {
+            "path": "com/fasterxml/jackson/core/jackson-core-annotations",
+            "name": "jackson-core-annotations-2.12.0.jar",
+        }
+        assert not jfrog_registry._is_maven_exact_match(
+            item, "com.fasterxml.jackson.core:jackson-core"
+        )
+
+    def test_maven_exact_match_artifact_only(self, jfrog_registry):
+        """Test exact matching for Maven packages with artifact name only."""
+        # Exact match cases
+        item = {"name": "spring-core", "path": "org/springframework/spring-core"}
+        assert jfrog_registry._is_maven_exact_match(item, "spring-core")
+
+        # Should reject partial matches
+        item = {
+            "name": "spring-core-test",
+            "path": "org/springframework/spring-core-test",
+        }
+        assert not jfrog_registry._is_maven_exact_match(item, "spring-core")
+
+    def test_generic_exact_match(self, jfrog_registry):
+        """Test exact matching for generic/other ecosystem packages."""
+        # Exact match cases
+        item = {"name": "some-package", "path": "path/to/some-package"}
+        assert jfrog_registry._is_generic_exact_match(item, "some-package")
+
+        # Should reject partial matches
+        item = {"name": "some-package-utils", "path": "path/to/some-package-utils"}
+        assert not jfrog_registry._is_generic_exact_match(item, "some-package")
+
+        item = {"name": "my-some-package", "path": "path/to/my-some-package"}
+        assert not jfrog_registry._is_generic_exact_match(item, "some-package")
+
+
+class TestFalsePositivePrevention:
+    """Test suite specifically for preventing false positive matches."""
+
+    def test_npm_package_name_collision_prevention(self, jfrog_registry):
+        """Test that npm packages with similar names don't match incorrectly."""
+        test_cases = [
+            # (search_package, item_path, should_match)
+            ("foo", ".npm/foo", True),
+            ("foo", ".npm/foo/1.0.0", True),
+            ("foo", ".npm/foo-bar", False),
+            ("foo", ".npm/my-foo", False),
+            ("foo", ".npm/foo-utils", False),
+            ("lodash", ".npm/lodash", True),
+            ("lodash", ".npm/lodash-es", False),
+            ("lodash", ".npm/babel-plugin-lodash", False),
+            ("react", ".npm/react", True),
+            ("react", ".npm/react-dom", False),
+            ("react", ".npm/@types/react", False),
+        ]
+
+        for package_name, item_path, expected in test_cases:
+            item = {"path": item_path, "name": "package.json"}
+            result = jfrog_registry._is_npm_exact_match(item, package_name)
+            assert (
+                result == expected
+            ), f"Failed for package='{package_name}', path='{item_path}', expected={expected}, got={result}"
+
+    def test_pypi_package_name_collision_prevention(self, jfrog_registry):
+        """Test that PyPI packages with similar names don't match incorrectly."""
+        test_cases = [
+            # (search_package, item_path, should_match)
+            ("django", "simple/django", True),
+            ("django", "simple/django/3.2.0", True),
+            ("django", "simple/django-rest-framework", False),
+            ("django", "simple/django-extensions", False),
+            ("requests", "simple/requests", True),
+            ("requests", "simple/requests-oauthlib", False),
+            ("flask", "simple/flask", True),
+            ("flask", "simple/flask-sqlalchemy", False),
+        ]
+
+        for package_name, item_path, expected in test_cases:
+            item = {"path": item_path, "name": "index.html"}
+            result = jfrog_registry._is_pypi_exact_match(item, package_name)
+            assert (
+                result == expected
+            ), f"Failed for package='{package_name}', path='{item_path}', expected={expected}, got={result}"
+
+    def test_maven_package_name_collision_prevention(self, jfrog_registry):
+        """Test that Maven packages with similar names don't match incorrectly."""
+        test_cases = [
+            # (search_package, item_name, item_path, should_match)
+            ("spring-core", "spring-core", "org/springframework/spring-core", True),
+            (
+                "spring-core",
+                "spring-core-test",
+                "org/springframework/spring-core-test",
+                False,
+            ),
+            (
+                "jackson-core",
+                "jackson-core-annotations",
+                "com/fasterxml/jackson/core/jackson-core-annotations",
+                False,
+            ),
+        ]
+
+        for package_name, item_name, item_path, expected in test_cases:
+            item = {"name": item_name, "path": item_path}
+            result = jfrog_registry._is_maven_exact_match(item, package_name)
+            assert (
+                result == expected
+            ), f"Failed for package='{package_name}', name='{item_name}', path='{item_path}', expected={expected}, got={result}"
+
+
+class TestNpmPackageStructureHandling:
+    """Test suite for handling different npm package structures in Artifactory."""
+
+    def test_npm_aql_query_finds_various_structures(self, jfrog_registry):
+        """Test that npm AQL queries can find packages in various directory structures."""
+        query = jfrog_registry._build_npm_aql_query("axios", "npm-remote")
+
+        # Verify the query uses $or to match both exact path and subdirectories
+        assert "$or" in query
+        assert '{"path": {"$eq": ".npm/axios"}}' in query
+        assert '{"path": {"$match": ".npm/axios/*"}}' in query
+
+    def test_npm_exact_match_handles_directory_structures(self, jfrog_registry):
+        """Test that npm exact matching works with real Artifactory directory structures."""
+        test_cases = [
+            # Different structures that should match for "axios"
+            ({"path": ".npm/axios", "name": "axios"}, True),  # Directory itself
+            (
+                {"path": ".npm/axios/1.6.0", "name": "package.json"},
+                True,
+            ),  # Version subdirectory
+            (
+                {"path": ".npm/axios/1.6.0", "name": "axios-1.6.0.tgz"},
+                True,
+            ),  # Package tarball
+            ({"path": ".npm/axios", "name": "package.json"}, True),  # Package metadata
+            # Structures that should NOT match for "axios" (false positives)
+            (
+                {"path": ".npm/axios-retry", "name": "package.json"},
+                False,
+            ),  # Similar package
+            (
+                {"path": ".npm/axios-mock-adapter", "name": "package.json"},
+                False,
+            ),  # Similar package
+            (
+                {"path": ".npm/@types/axios", "name": "package.json"},
+                False,
+            ),  # Type definitions
+        ]
+
+        for item, expected in test_cases:
+            result = jfrog_registry._is_npm_exact_match(item, "axios")
+            assert (
+                result == expected
+            ), f"Failed for item={item}, expected={expected}, got={result}"
+
+    def test_npm_scoped_package_structure_handling(self, jfrog_registry):
+        """Test that scoped packages work correctly with directory structures."""
+        test_cases = [
+            # Different structures that should match for "@angular/core"
+            ({"path": ".npm/@angular/core", "name": "package.json"}, True),
+            ({"path": ".npm/@angular/core/15.0.0", "name": "package.json"}, True),
+            (
+                {
+                    "path": ".npm/@angular/core/15.0.0",
+                    "name": "angular-core-15.0.0.tgz",
+                },
+                True,
+            ),
+            # Structures that should NOT match for "@angular/core" (false positives)
+            ({"path": ".npm/@angular/core-testing", "name": "package.json"}, False),
+            ({"path": ".npm/@angular/core-common", "name": "package.json"}, False),
+        ]
+
+        for item, expected in test_cases:
+            result = jfrog_registry._is_npm_exact_match(item, "@angular/core")
+            assert (
+                result == expected
+            ), f"Failed for item={item}, expected={expected}, got={result}"

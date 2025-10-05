@@ -25,6 +25,9 @@ class TestSecurityAnalysisUseCase:
         service = Mock()
         service.health_check = AsyncMock(return_value=True)
         service.search_packages = AsyncMock(return_value=[])
+        service.discover_repositories_by_ecosystem = AsyncMock(
+            return_value=["test-repo"]
+        )
         # get_registry_name is NOT async according to interface
         service.get_registry_name = Mock(return_value="JFrog")
         service.get_supported_ecosystems = AsyncMock(

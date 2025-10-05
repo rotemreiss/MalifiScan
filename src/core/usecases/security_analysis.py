@@ -193,6 +193,13 @@ class SecurityAnalysisUseCase:
 
             for malicious_pkg in malicious_packages:
                 try:
+                    # Get repositories for this ecosystem to show which ones were searched
+                    repositories_searched = (
+                        await self.registry_service.discover_repositories_by_ecosystem(
+                            malicious_pkg.ecosystem
+                        )
+                    )
+
                     # Search for this package in the registry using its specific ecosystem
                     registry_results = await self.registry_service.search_packages(
                         malicious_pkg.name, malicious_pkg.ecosystem
@@ -218,13 +225,14 @@ class SecurityAnalysisUseCase:
                             registry_versions, malicious_versions
                         )
 
-                        # Create registry package match
+                        # Create registry package match with repository information
                         package_match = match_builder.build_match(
                             package=malicious_pkg,
                             registry_results=registry_results,
                             matching_versions=matching_versions,
                             all_registry_versions=registry_versions,
                             malicious_versions=malicious_versions,
+                            repositories_searched=repositories_searched,
                         )
 
                         # Use unified logic to determine if critical
@@ -234,6 +242,10 @@ class SecurityAnalysisUseCase:
                             found_matches.append(package_match.to_match_dict())
                         else:
                             safe_packages.append(package_match.to_safe_dict())
+                    else:
+                        # Package not found, but still track repositories searched
+                        # We don't need to create a match object for not found packages
+                        pass
 
                 except Exception as e:
                     self.logger.error(

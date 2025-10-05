@@ -28,6 +28,7 @@ class RegistryPackageMatch:
     matching_versions: Optional[List[str]] = None
     all_registry_versions: Optional[List[str]] = None
     malicious_versions: Optional[List[str]] = None
+    repositories_searched: Optional[List[str]] = None
 
     def to_match_dict(self) -> Dict[str, Any]:
         """
@@ -44,6 +45,7 @@ class RegistryPackageMatch:
             "matching_versions": self.matching_versions or [],
             f"all_{registry_key}_versions": self.all_registry_versions or [],
             "malicious_versions": self.malicious_versions or [],
+            "repositories_searched": self.repositories_searched or [],
         }
 
     def to_safe_dict(self) -> Dict[str, Any]:
@@ -60,6 +62,7 @@ class RegistryPackageMatch:
             f"{registry_key}_results": self.registry_results or [],
             f"{registry_key}_versions": self.all_registry_versions or [],
             "malicious_versions": self.malicious_versions or [],
+            "repositories_searched": self.repositories_searched or [],
         }
 
     def get_all_versions_field_name(self) -> str:
@@ -115,6 +118,7 @@ class RegistryPackageMatchBuilder:
         matching_versions: Optional[List[str]] = None,
         all_registry_versions: Optional[List[str]] = None,
         malicious_versions: Optional[List[str]] = None,
+        repositories_searched: Optional[List[str]] = None,
     ) -> RegistryPackageMatch:
         """
         Build a RegistryPackageMatch instance.
@@ -125,6 +129,7 @@ class RegistryPackageMatchBuilder:
             matching_versions: Versions that match between registry and malicious
             all_registry_versions: All versions found in registry
             malicious_versions: All malicious versions
+            repositories_searched: List of repositories that were searched
 
         Returns:
             RegistryPackageMatch instance
@@ -136,6 +141,7 @@ class RegistryPackageMatchBuilder:
             matching_versions=matching_versions,
             all_registry_versions=all_registry_versions,
             malicious_versions=malicious_versions,
+            repositories_searched=repositories_searched,
         )
 
     def build_from_finding(

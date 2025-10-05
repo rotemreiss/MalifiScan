@@ -48,7 +48,15 @@ class RegistryManagementUseCase:
                     "search_results": [],
                     "results_count": 0,
                     "is_blocked": False,
+                    "repositories_searched": [],
                 }
+
+            # Discover repositories for this ecosystem
+            repositories_searched = (
+                await self.registry_service.discover_repositories_by_ecosystem(
+                    ecosystem
+                )
+            )
 
             # Search for the package
             search_results = await self.registry_service.search_packages(
@@ -82,6 +90,7 @@ class RegistryManagementUseCase:
                 "search_results": search_results or [],
                 "results_count": len(search_results) if search_results else 0,
                 "is_blocked": is_blocked,
+                "repositories_searched": repositories_searched,
             }
 
         except Exception as e:
@@ -95,6 +104,7 @@ class RegistryManagementUseCase:
                 "search_results": [],
                 "results_count": 0,
                 "is_blocked": False,
+                "repositories_searched": [],
             }
         finally:
             # Ensure session is properly closed
@@ -379,6 +389,83 @@ class RegistryManagementUseCase:
                 "error": str(e),
                 "healthy": False,
                 "registry_name": "Unknown",
+            }
+        finally:
+            # Ensure session is properly closed
+            await self.registry_service.close()
+
+    async def list_ecosystems_and_repositories(self) -> Dict[str, Any]:
+        """
+        List available ecosystems and their matching repositories.
+
+        Returns:
+            Dictionary containing ecosystem and repository information
+        """
+        try:
+            self.logger.debug("Listing ecosystems and their repositories")
+
+            # Check registry health first
+            registry_healthy = await self.registry_service.health_check()
+
+            if not registry_healthy:
+                return {
+                    "success": False,
+                    "error": "Registry is not accessible",
+                    "registry_healthy": False,
+                    "ecosystems": {},
+                    "total_ecosystems": 0,
+                    "total_repositories": 0,
+                }
+
+            # Get supported ecosystems from the registry
+            if hasattr(self.registry_service, "get_supported_ecosystems"):
+                supported_ecosystems = (
+                    await self.registry_service.get_supported_ecosystems()
+                )
+            else:
+                # Fallback to common ecosystems
+                supported_ecosystems = ["npm", "PyPI", "Maven", "Go", "NuGet"]
+
+            ecosystem_repos = {}
+            all_repositories = set()
+
+            # For each ecosystem, discover its repositories
+            for ecosystem in supported_ecosystems:
+                try:
+                    repositories = (
+                        await self.registry_service.discover_repositories_by_ecosystem(
+                            ecosystem
+                        )
+                    )
+                    ecosystem_repos[ecosystem] = repositories
+                    all_repositories.update(repositories)
+                    self.logger.debug(
+                        f"Ecosystem {ecosystem}: {len(repositories)} repositories"
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to discover repositories for ecosystem {ecosystem}: {e}"
+                    )
+                    ecosystem_repos[ecosystem] = []
+
+            return {
+                "success": True,
+                "registry_healthy": registry_healthy,
+                "ecosystems": ecosystem_repos,
+                "total_ecosystems": len(supported_ecosystems),
+                "total_repositories": len(all_repositories),
+                "registry_name": self.registry_service.get_registry_name(),
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error listing ecosystems and repositories: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "registry_healthy": False,
+                "ecosystems": {},
+                "total_ecosystems": 0,
+                "total_repositories": 0,
             }
         finally:
             # Ensure session is properly closed

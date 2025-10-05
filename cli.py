@@ -228,6 +228,17 @@ class SecurityScannerCLI:
                 "Registry Health",
                 "✅ Healthy" if search_result["registry_healthy"] else "❌ Unhealthy",
             )
+
+            # Show repositories searched
+            repositories_searched = search_result.get("repositories_searched", [])
+            if repositories_searched:
+                repos_display = ", ".join(repositories_searched)
+                if len(repos_display) > 50:  # Truncate if too long
+                    repos_display = repos_display[:47] + "..."
+                table.add_row("Repositories Searched", repos_display)
+            else:
+                table.add_row("Repositories Searched", "None found")
+
             table.add_row(
                 "Search Results", f"{search_result['results_count']} packages found"
             )
@@ -514,6 +525,7 @@ class SecurityScannerCLI:
 
                 for match in found_matches:
                     pkg = match["package"]
+                    repositories_searched = match.get("repositories_searched", [])
                     self.console.print(f"\n❌ {pkg.name}", style="bold red")
                     self.console.print(
                         f"   📦\tMalicious versions: {', '.join(match['malicious_versions'])}"
@@ -525,6 +537,13 @@ class SecurityScannerCLI:
                         f"   ⚠️\tMATCHING VERSIONS: {', '.join(match['matching_versions'])}",
                         style="bold red",
                     )
+                    if repositories_searched:
+                        repos_display = ", ".join(repositories_searched)
+                        if len(repos_display) > 60:  # Truncate if too long
+                            repos_display = repos_display[:57] + "..."
+                        self.console.print(
+                            f"   🗂️\tRepositories searched: {repos_display}"
+                        )
                     if hasattr(pkg, "package_url"):
                         self.console.print(f"   🔗\tPackage URL: {pkg.package_url}")
 
@@ -536,6 +555,7 @@ class SecurityScannerCLI:
 
                 for safe in safe_packages:
                     pkg = safe["package"]
+                    repositories_searched = safe.get("repositories_searched", [])
                     self.console.print(f"\n🟡 {pkg.name}", style="bright_green")
                     self.console.print(
                         f"   📦\tMalicious versions: {', '.join(safe['malicious_versions'])}"
@@ -543,6 +563,13 @@ class SecurityScannerCLI:
                     self.console.print(
                         f"   🏗️\t{registry_name} versions: {', '.join(safe[field_names['versions_field']])}"
                     )
+                    if repositories_searched:
+                        repos_display = ", ".join(repositories_searched)
+                        if len(repos_display) > 60:  # Truncate if too long
+                            repos_display = repos_display[:57] + "..."
+                        self.console.print(
+                            f"   🗂️\tRepositories searched: {repos_display}"
+                        )
 
             if not_found_count > 0:
                 self.console.print(
@@ -918,6 +945,103 @@ class SecurityScannerCLI:
 
         except Exception as e:
             self.console.print(f"❌ Error listing blocked packages: {e}", style="red")
+            return False
+
+    async def registry_list_repos(self) -> bool:
+        """List available ecosystems and their matching repositories."""
+        try:
+            self.console.print("📋 Listing ecosystems and repositories...")
+
+            if not self.app or not self.app.registry_management:
+                self.console.print(
+                    "❌ Registry management not initialized", style="red"
+                )
+                return False
+
+            # Use the registry management use case
+            list_result = (
+                await self.app.registry_management.list_ecosystems_and_repositories()
+            )
+
+            if not list_result["success"]:
+                error_msg = list_result.get("error", "Unknown error")
+                self.console.print(
+                    f"❌ Failed to list repositories: {error_msg}", style="red"
+                )
+                return False
+
+            # Display results
+            ecosystems = list_result["ecosystems"]
+            registry_name = list_result.get("registry_name", "Package Registry")
+
+            # Summary table
+            summary_table = Table(
+                title=f"Repository Discovery Summary - {registry_name}"
+            )
+            summary_table.add_column("Property", style="cyan")
+            summary_table.add_column("Value", style="magenta")
+
+            summary_table.add_row(
+                "Registry Health",
+                "✅ Healthy" if list_result["registry_healthy"] else "❌ Unhealthy",
+            )
+            summary_table.add_row(
+                "Total Ecosystems", str(list_result["total_ecosystems"])
+            )
+            summary_table.add_row(
+                "Total Repositories", str(list_result["total_repositories"])
+            )
+
+            self.console.print(summary_table)
+
+            # Detailed ecosystem-repository mapping
+            if ecosystems:
+                self.console.print("\n🏗️ Ecosystem to Repository Mapping:")
+
+                # Create detailed table
+                details_table = Table()
+                details_table.add_column("Ecosystem", style="cyan")
+                details_table.add_column("Repository Count", style="yellow")
+                details_table.add_column("Repository Names", style="white")
+
+                for ecosystem, repositories in ecosystems.items():
+                    repo_count = len(repositories)
+                    if repositories:
+                        repo_names = ", ".join(repositories)
+                        # Truncate very long lists
+                        if len(repo_names) > 80:
+                            repo_names = repo_names[:77] + "..."
+                    else:
+                        repo_names = "None found"
+
+                    # Style based on whether repositories were found
+                    count_style = "green" if repo_count > 0 else "red"
+
+                    details_table.add_row(
+                        ecosystem,
+                        f"[{count_style}]{repo_count}[/{count_style}]",
+                        repo_names,
+                    )
+
+                self.console.print(details_table)
+
+                # Show ecosystems with no repositories
+                no_repos = [eco for eco, repos in ecosystems.items() if not repos]
+                if no_repos:
+                    self.console.print(
+                        f"\n⚠️ Ecosystems with no repositories found: {', '.join(no_repos)}",
+                        style="yellow",
+                    )
+
+            else:
+                self.console.print(
+                    "📝 No ecosystem information available", style="yellow"
+                )
+
+            return True
+
+        except Exception as e:
+            self.console.print(f"❌ Error listing repositories: {e}", style="red")
             return False
 
     async def registry_unblock(
@@ -1572,6 +1696,10 @@ Examples:
         "--details", action="store_true", help="Show detailed pattern information"
     )
 
+    registry_subparsers.add_parser(
+        "list-repos", help="List available ecosystems and their matching repositories"
+    )
+
     # Security scan command
     scan_parser = subparsers.add_parser("scan", help="Security scanning operations")
     scan_subparsers = scan_parser.add_subparsers(dest="scan_action")
@@ -1704,6 +1832,8 @@ Examples:
                 )
             elif args.registry_action == "list-blocked":
                 await cli.registry_list_blocked(args.ecosystem)
+            elif args.registry_action == "list-repos":
+                await cli.registry_list_repos()
 
         elif args.command == "feed":
             if args.feed_action == "fetch":
