@@ -43,6 +43,7 @@ async def test_msteams_notifier_integration():
     )
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_service_factory_creates_null_notifier_when_disabled(test_config):
     """Test that service factory creates null notifier when notifications disabled."""
@@ -56,6 +57,7 @@ async def test_service_factory_creates_null_notifier_when_disabled(test_config):
     assert isinstance(notification_service, NullNotifier)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_service_factory_fallback_to_null_on_error():
     """Test that service factory falls back to null notifier on MS Teams creation error."""
@@ -76,6 +78,7 @@ async def test_service_factory_fallback_to_null_on_error():
         assert isinstance(notification_service, NullNotifier)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_security_analysis_sends_notification_on_critical_findings(
     sample_npm_malicious_package,
@@ -139,6 +142,7 @@ async def test_security_analysis_sends_notification_on_critical_findings(
         assert len(result["found_matches"]) > 0  # But verify we have critical matches
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_security_analysis_no_notification_when_disabled(
     sample_npm_malicious_package,
@@ -189,6 +193,7 @@ async def test_security_analysis_no_notification_when_disabled(
     mock_notification_service.send_notification.assert_not_called()
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_security_analysis_no_notification_when_no_critical_findings(
     mock_packages_feed,
@@ -250,6 +255,7 @@ async def test_security_analysis_no_notification_when_no_critical_findings(
         mock_notification_service.send_notification.assert_not_called()
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_notification_error_handling_in_security_analysis(
     sample_npm_malicious_package,
