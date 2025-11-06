@@ -1612,8 +1612,8 @@ class SecurityScannerCLI:
             return False
 
 
-async def main():
-    """Main CLI entry point."""
+async def async_main():
+    """Async main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Security Scanner CLI - Manual testing and administration tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1884,5 +1884,10 @@ Examples:
         sys.exit(1)
 
 
+def main():
+    """Synchronous entry point for the CLI."""
+    asyncio.run(async_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "malifiscan"
-version = "0.12"
+version = "0.13"
 description = "A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories."
 authors = [
     {name = "Security Team", email = "security@example.com"}
@@ -66,6 +66,13 @@ dev = [
     "flake8>=6.0.0",
     "pre-commit>=4.3.0",
 ]
+
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 markers = [
