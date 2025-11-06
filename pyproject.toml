@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "malifiscan"
-version = "1.0.0"
+version = "0.12"
 description = "A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories."
 authors = [
     {name = "Security Team", email = "security@example.com"}
