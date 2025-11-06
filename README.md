@@ -1,13 +1,13 @@
 # Malifiscan
 
 <div align="center">
-  <img src="art/logo.png" alt="Malifiscan Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/rotemreiss/MalifiScan/main/art/logo.png" alt="Malifiscan Logo" width="200"/>
 </div>
 
 A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories.
 
 <div align="center">
-  <img src="art/demo.gif" alt="Malifiscan In-Action"/>
+  <img src="https://raw.githubusercontent.com/rotemreiss/MalifiScan/main/art/demo.gif" alt="Malifiscan In-Action"/>
 </div>
 
 ## Table of Contents
