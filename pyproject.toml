@@ -54,7 +54,7 @@ dev = [
 ]
 
 [project.scripts]
-osv-scanner = "cli:main"
+malifiscan = "cli:main"
 
 [dependency-groups]
 dev = [
