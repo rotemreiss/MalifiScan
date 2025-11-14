@@ -59,6 +59,7 @@ class ServiceFactory:
 
         try:
             if self.config.packages_feed.type.lower() == "osv":
+                cache_config = self.config.packages_feed.config.get("cache", {})
                 return OSVFeed(
                     bucket_name=self.config.packages_feed.config.get(
                         "bucket_name", "osv-vulnerabilities"
@@ -70,6 +71,7 @@ class ServiceFactory:
                     retry_delay=self.config.packages_feed.config.get(
                         "retry_delay", 1.0
                     ),
+                    redis_url=cache_config.get("redis_url"),
                 )
             elif self.config.packages_feed.type.lower() == "memory":
                 # Memory feed for testing - convert YAML packages to MaliciousPackage objects

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from google.api_core import exceptions as gcs_exceptions
 from google.cloud import storage
 
+from ...core.cache import PackageCache
 from ...core.entities import MaliciousPackage
 from ...core.interfaces import PackagesFeed
 from ..exceptions import FeedError
@@ -27,6 +28,7 @@ class OSVFeed(PackagesFeed):
         timeout_seconds: int = 30,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        redis_url: Optional[str] = None,
     ):
         """
         Initialize OSV feed provider.
@@ -36,6 +38,7 @@ class OSVFeed(PackagesFeed):
             timeout_seconds: Request timeout in seconds
             max_retries: Maximum number of retry attempts
             retry_delay: Delay between retries in seconds
+            redis_url: Redis connection URL (e.g., redis://localhost:6379/0)
         """
         self.bucket_name = bucket_name
         self.timeout_seconds = timeout_seconds
@@ -43,6 +46,7 @@ class OSVFeed(PackagesFeed):
         self.retry_delay = retry_delay
         self._client: Optional[storage.Client] = None
         self._bucket: Optional[storage.Bucket] = None
+        self._cache = PackageCache(redis_url=redis_url)
 
     def _get_client(self) -> storage.Client:
         """Get or create GCS client."""
@@ -57,6 +61,32 @@ class OSVFeed(PackagesFeed):
             client = self._get_client()
             self._bucket = client.bucket(self.bucket_name)
         return self._bucket
+
+    def get_cache_stats(self) -> Dict[str, int]:
+        """
+        Get cache statistics.
+
+        Returns:
+            Dictionary with cache statistics including hits/misses from last fetch
+        """
+        stats = self._cache.get_stats()
+        # Add fetch-specific stats if available
+        if hasattr(self, "_total_cache_hits"):
+            stats["last_fetch_hits"] = self._total_cache_hits
+            stats["last_fetch_misses"] = self._total_cache_misses
+            if self._total_cache_hits + self._total_cache_misses > 0:
+                total = self._total_cache_hits + self._total_cache_misses
+                stats["last_fetch_hit_rate"] = (self._total_cache_hits / total) * 100
+        return stats
+
+    def purge_cache(self) -> int:
+        """
+        Purge all cached packages.
+
+        Returns:
+            Number of packages removed from cache
+        """
+        return self._cache.purge()
 
     async def fetch_malicious_packages(
         self,
@@ -79,6 +109,10 @@ class OSVFeed(PackagesFeed):
             FeedError: If the feed cannot be accessed or parsed
         """
         logger.info("Fetching malicious packages from OSV GCS bucket")
+
+        # Reset cache stats for this fetch
+        self._total_cache_hits = 0
+        self._total_cache_misses = 0
 
         try:
             # If no ecosystems specified, get all available ecosystems with malicious packages
@@ -202,8 +236,6 @@ class OSVFeed(PackagesFeed):
         hours: Optional[int] = None,
     ) -> List[MaliciousPackage]:
         """Fetch malicious packages for a specific ecosystem from GCS bucket."""
-        packages = []
-
         try:
             logger.info(f"Starting to fetch malicious packages for {ecosystem}")
 
@@ -224,20 +256,17 @@ class OSVFeed(PackagesFeed):
                     f"Will fetch first {packages_to_fetch} packages (limited by max_packages={max_packages})"
                 )
 
-            for i, vuln_id in enumerate(malicious_ids[:packages_to_fetch]):
-                try:
-                    logger.info(
-                        f"Fetching package {i+1}/{packages_to_fetch}: {vuln_id}"
-                    )
-                    package = await self._fetch_malicious_package(ecosystem, vuln_id)
-                    if package:
-                        packages.append(package)
-                        logger.info(f"Successfully parsed package: {package.name}")
-                    else:
-                        logger.warning(f"Failed to parse package {vuln_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to fetch package {vuln_id}: {e}")
-                    continue
+            # Parallel fetch with concurrency limit
+            packages, cache_hits, cache_misses = await self._fetch_packages_parallel(
+                ecosystem, malicious_ids[:packages_to_fetch]
+            )
+
+            # Store cache stats for this ecosystem
+            if not hasattr(self, "_total_cache_hits"):
+                self._total_cache_hits = 0
+                self._total_cache_misses = 0
+            self._total_cache_hits += cache_hits
+            self._total_cache_misses += cache_misses
 
             logger.info(
                 f"Successfully fetched {len(packages)} packages for {ecosystem}"
@@ -247,6 +276,65 @@ class OSVFeed(PackagesFeed):
         except Exception as e:
             logger.error(f"Failed to fetch packages for ecosystem {ecosystem}: {e}")
             raise
+
+    async def _fetch_packages_parallel(
+        self, ecosystem: str, vuln_ids: List[str], max_concurrent: int = 10
+    ) -> tuple[List[MaliciousPackage], int, int]:
+        """
+        Fetch multiple packages in parallel with concurrency control.
+
+        Args:
+            ecosystem: Package ecosystem
+            vuln_ids: List of vulnerability IDs to fetch
+            max_concurrent: Maximum concurrent requests (default: 10)
+
+        Returns:
+            Tuple of (list of MaliciousPackage objects, cache_hits, cache_misses)
+        """
+        semaphore = asyncio.Semaphore(max_concurrent)
+        packages = []
+        total = len(vuln_ids)
+
+        # Count cache hits
+        cache_hits = sum(1 for vid in vuln_ids if self._cache.has(vid))
+        cache_misses = total - cache_hits
+
+        if total > 0:
+            logger.info(
+                f"Cache stats: {cache_hits} hits, {cache_misses} misses ({cache_hits/total*100:.1f}% hit rate)"
+            )
+
+        async def fetch_with_semaphore(
+            idx: int, vuln_id: str
+        ) -> Optional[MaliciousPackage]:
+            """Fetch a single package with semaphore control."""
+            async with semaphore:
+                try:
+                    if (idx + 1) % 50 == 0:
+                        logger.info(f"Progress: {idx + 1}/{total} packages fetched")
+                    package = await self._fetch_malicious_package(ecosystem, vuln_id)
+                    if package:
+                        return package
+                    else:
+                        logger.warning(f"Failed to parse package {vuln_id}")
+                        return None
+                except Exception as e:
+                    logger.warning(f"Failed to fetch package {vuln_id}: {e}")
+                    return None
+
+        # Fetch all packages in parallel
+        logger.info(
+            f"Fetching {total} packages with max {max_concurrent} concurrent requests"
+        )
+        results = await asyncio.gather(
+            *[fetch_with_semaphore(i, vuln_id) for i, vuln_id in enumerate(vuln_ids)],
+            return_exceptions=False,
+        )
+
+        # Filter out None results
+        packages = [pkg for pkg in results if pkg is not None]
+        logger.info(f"Successfully fetched {len(packages)}/{total} packages")
+        return packages, cache_hits, cache_misses
 
     async def _get_malicious_package_ids(
         self, ecosystem: str, hours: Optional[int] = None
@@ -338,6 +426,13 @@ class OSVFeed(PackagesFeed):
         self, ecosystem: str, vuln_id: str
     ) -> Optional[MaliciousPackage]:
         """Fetch a single malicious package JSON from GCS bucket."""
+        # Check cache first
+        cached_package = self._cache.get(vuln_id)
+        if cached_package is not None:
+            logger.info(f"Cache hit for {vuln_id}")
+            return cached_package
+
+        logger.info(f"Cache miss for {vuln_id}, fetching from GCS")
         json_path = f"{ecosystem}/{vuln_id}.json"
 
         for attempt in range(self.max_retries + 1):
@@ -363,6 +458,11 @@ class OSVFeed(PackagesFeed):
 
                 # Convert to MaliciousPackage entity
                 package = self._parse_malicious_package(vuln_data)
+
+                # Store in cache
+                if package:
+                    self._cache.put(vuln_id, package)
+
                 return package
 
             except Exception as e:

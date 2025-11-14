@@ -14,11 +14,14 @@ packages_feed:
     timeout_seconds: 30
     max_retries: 3
     retry_delay: 1.0
+    # Cache configuration
+    cache:
+      redis_url: null  # e.g., redis://localhost:6379/0 (null = no cache, packages fetched from source)
 
 # Package Registry Configuration
 packages_registry:
   type: jfrog  # Currently only 'jfrog' is supported
-  enabled: false  # Disabled by default to avoid requiring credentials
+  enabled: false  # Enable for crossref scan
   config:
     timeout_seconds: 30
     max_retries: 3
