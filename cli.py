@@ -1326,6 +1326,40 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error fetching from feed: {e}", style="red")
             return False
 
+    def _format_service_details(self, service_name: str, details) -> str:
+        """
+        Format service health details for display.
+
+        Args:
+            service_name: Name of the service
+            details: Service details (bool, dict, or string)
+
+        Returns:
+            Formatted details string
+        """
+        # Handle cache service with dict response
+        if service_name == "cache" and isinstance(details, dict):
+            if "enabled" in details:
+                if details.get("enabled"):
+                    backend = details.get("backend", "unknown").title()
+                    if details.get("healthy", True):
+                        return f"✅ {backend} connected"
+                    else:
+                        return f"⚠️ {backend} unhealthy"
+                else:
+                    return "ℹ️ Cache disabled (no-cache mode)"
+
+        # Handle boolean response
+        if isinstance(details, bool):
+            return (
+                "Service is responding normally"
+                if details
+                else "Service is not responding"
+            )
+
+        # Handle string or other types
+        return str(details)
+
     async def health_check(self) -> bool:
         """Check health of all services."""
         try:
@@ -1361,7 +1395,12 @@ class SecurityScannerCLI:
                 else:
                     status = "❌ Unhealthy"
 
-                table.add_row(service_name.title(), status, health_info["details"])
+                # Format details based on service type
+                details = self._format_service_details(
+                    service_name, health_info["details"]
+                )
+
+                table.add_row(service_name.title(), status, details)
 
             self.console.print(table)
 

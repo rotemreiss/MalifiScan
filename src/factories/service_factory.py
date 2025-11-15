@@ -340,3 +340,43 @@ class ServiceFactory:
 
         except Exception as e:
             raise ServiceFactoryError(f"Failed to create storage service: {e}") from e
+
+    def create_cache_service(self):
+        """
+        Create cache service based on configuration.
+
+        Returns:
+            PackageCacheService instance
+
+        Raises:
+            ServiceFactoryError: If provider creation fails
+        """
+        try:
+            from src.core.cache import PackageCache
+            from src.providers.cache import NoCacheProvider, RedisCacheProvider
+
+            # Get cache configuration from packages_feed config
+            cache_config = self.config.packages_feed.config.get("cache", {})
+            redis_url = cache_config.get("redis_url")
+            key_prefix = cache_config.get("redis_key_prefix", "malifiscan:pkg:")
+
+            # Create appropriate provider
+            if redis_url:
+                logger.debug("Creating Redis cache provider")
+                provider = RedisCacheProvider(redis_url=redis_url)
+
+                # If Redis connection failed, fall back to no-cache
+                if not provider.is_connected():
+                    logger.info(
+                        "Redis connection failed, falling back to no-cache mode"
+                    )
+                    provider = NoCacheProvider()
+            else:
+                logger.debug("No Redis URL configured, using no-cache mode")
+                provider = NoCacheProvider()
+
+            # Create PackageCache service with provider
+            return PackageCache(provider=provider, key_prefix=key_prefix)
+
+        except Exception as e:
+            raise ServiceFactoryError(f"Failed to create cache service: {e}") from e

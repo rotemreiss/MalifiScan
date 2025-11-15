@@ -14,6 +14,7 @@ from google.cloud import storage
 from ...core.cache import PackageCache
 from ...core.entities import MaliciousPackage
 from ...core.interfaces import PackagesFeed
+from ...providers.cache import NoCacheProvider, RedisCacheProvider
 from ..exceptions import FeedError
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,17 @@ class OSVFeed(PackagesFeed):
         self.retry_delay = retry_delay
         self._client: Optional[storage.Client] = None
         self._bucket: Optional[storage.Bucket] = None
-        self._cache = PackageCache(redis_url=redis_url)
+
+        # Create cache with appropriate provider
+        if redis_url:
+            provider = RedisCacheProvider(redis_url=redis_url)
+            # Fall back to no-cache if Redis connection failed
+            if not provider.is_connected():
+                provider = NoCacheProvider()
+        else:
+            provider = NoCacheProvider()
+
+        self._cache = PackageCache(provider=provider)
 
     def _get_client(self) -> storage.Client:
         """Get or create GCS client."""

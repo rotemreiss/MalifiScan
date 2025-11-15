@@ -380,3 +380,29 @@ def test_registry_packages():
             modified_at=datetime.now(timezone.utc),
         ),
     ]
+
+
+@pytest.fixture
+def no_cache_provider():
+    """Create a no-cache provider for testing."""
+    from src.providers.cache import NoCacheProvider
+
+    return NoCacheProvider()
+
+
+@pytest.fixture
+def mock_redis_provider():
+    """Create a mock Redis provider for testing."""
+    from unittest.mock import MagicMock
+
+    mock = MagicMock()
+    mock.get.return_value = None
+    mock.put.return_value = None
+    mock.has.return_value = False
+    mock.delete.return_value = False
+    mock.scan_keys.return_value = iter([])
+    mock.delete_many.return_value = 0
+    mock.is_connected.return_value = True
+    mock.ping = AsyncMock(return_value=True)
+    mock.get_backend_name.return_value = "redis"
+    return mock

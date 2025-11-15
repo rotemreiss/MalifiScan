@@ -11,17 +11,36 @@ src/
 ├── core/                   # Business logic & entities
 │   ├── entities/          # Domain models (MaliciousPackage, ScanResult)
 │   ├── usecases/          # Application logic (SecurityScanner)
-│   └── interfaces/        # Abstract service contracts
+│   ├── interfaces/        # Abstract service contracts
+│   └── cache/             # Package caching service
 ├── providers/             # External service implementations
 │   ├── feeds/            # OSV feed provider
 │   ├── registries/       # JFrog Artifactory provider
 │   ├── notifications/    # Notification providers
-│   └── storage/          # File/Database storage providers
+│   ├── storage/          # File/Database storage providers
+│   └── cache/            # Cache backend providers (Redis, NoCache)
 ├── factories/            # Dependency injection factories
 ├── config/              # Configuration management
 ├── scheduler/           # Periodic task scheduling
 └── main.py             # Application entry point
 ```
+
+### 🧩 Cache Architecture
+
+Malifiscan uses a pluggable cache architecture for malicious package data:
+
+- **`PackageCache`** (`src/core/cache/`): High-level cache service implementing `PackageCacheService` interface
+- **Cache Providers** (`src/providers/cache/`):
+  - **`RedisCacheProvider`**: Redis-backed caching for production use
+  - **`NoCacheProvider`**: No-op provider when caching is disabled
+- **Automatic Fallback**: If Redis connection fails, automatically falls back to `NoCacheProvider`
+- **Factory Integration**: `ServiceFactory.create_cache_service()` handles provider selection and instantiation
+
+To extend with a new cache backend (e.g., Memcached, DynamoDB):
+1. Create provider implementing `CacheProvider` interface in `src/providers/cache/`
+2. Add provider selection logic in `ServiceFactory.create_cache_service()`
+3. Update configuration schema to support new backend
+4. Add unit tests mirroring `tests/unit/core/cache/test_package_cache.py`
 
 ## 🚀 Development Setup
 

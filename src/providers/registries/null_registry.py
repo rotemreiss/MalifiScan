@@ -145,6 +145,47 @@ class NullRegistry(PackagesRegistryService):
             )
             return []
 
+    async def search_packages_wildcard(self, prefix: str, ecosystem: str) -> List[dict]:
+        """
+        Search for packages using wildcard pattern (returns matched packages if any).
+
+        Args:
+            prefix: Package name prefix to search for
+            ecosystem: Package ecosystem
+
+        Returns:
+            List of matching packages (or empty list)
+        """
+        if self._packages:
+            # Find packages that start with the prefix
+            matches = []
+            for package in self._packages:
+                if (
+                    package.name.lower().startswith(prefix.lower())
+                    and package.ecosystem.lower() == ecosystem.lower()
+                ):
+                    # Convert to registry search result format
+                    match_dict = {
+                        "name": package.name,
+                        "ecosystem": package.ecosystem,
+                        "version": package.version,
+                        "versions": package.affected_versions,
+                        "registry_url": f"pkg:{ecosystem}/{package.name}",
+                        "path": f"null-registry/{package.name}",
+                        "size": 0,
+                        "modified": "2024-09-29T06:00:00Z",
+                    }
+                    matches.append(match_dict)
+            logger.debug(
+                f"NullRegistry: Found {len(matches)} packages matching {prefix}* in {ecosystem}"
+            )
+            return matches
+        else:
+            logger.debug(
+                f"NullRegistry: Would search for {prefix}* in {ecosystem} (registry disabled)"
+            )
+            return []
+
     async def is_package_blocked(self, package: MaliciousPackage) -> bool:
         """
         Check if package is blocked (no-op).

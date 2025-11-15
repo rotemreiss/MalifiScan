@@ -2,63 +2,39 @@
 
 import json
 import logging
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
+from ...providers.cache import CacheProvider
 from ..entities import MaliciousPackage
+from ..interfaces import PackageCacheService
 
 logger = logging.getLogger(__name__)
 
 
-class PackageCache:
-    """Redis-based persistent cache for malicious packages with no-cache fallback."""
+class PackageCache(PackageCacheService):
+    """Package cache service with pluggable backend providers."""
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
-        redis_key_prefix: str = "malifiscan:pkg:",
+        provider: CacheProvider,
+        key_prefix: str = "malifiscan:pkg:",
     ):
         """
         Initialize the package cache.
 
         Args:
-            redis_url: Redis connection URL (e.g., redis://localhost:6379/0)
-            redis_key_prefix: Prefix for Redis keys
+            provider: Cache backend provider (Redis, NoCache, etc.)
+            key_prefix: Prefix for cache keys
         """
-        self.redis_key_prefix = redis_key_prefix
-        self._redis = None
-        self._use_cache = False
+        self.provider = provider
+        self.key_prefix = key_prefix
+        logger.debug(
+            f"PackageCache initialized with {provider.get_backend_name()} backend"
+        )
 
-        # Try to connect to Redis
-        if redis_url:
-            try:
-                import redis
-
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                # Test connection
-                self._redis.ping()
-                self._use_cache = True
-                logger.debug(f"✅ Connected to Redis cache at {redis_url}")
-            except ImportError:
-                logger.warning("redis package not installed, caching disabled")
-            except Exception as e:
-                logger.warning(f"Failed to connect to Redis: {e}, caching disabled")
-
-        if not self._use_cache:
-            logger.info("⚠️ Cache disabled - all packages will be fetched from source")
-
-    def _load_cache(self) -> None:
-        """Load cache from disk (no-op for Redis-only cache)."""
-        # No file-based cache - this is a no-op
-        pass
-
-    def _save_cache(self) -> None:
-        """Save cache to disk (no-op for Redis-only cache)."""
-        # No file-based cache - this is a no-op
-        pass
-
-    def _redis_key(self, osv_id: str) -> str:
-        """Get Redis key for OSV ID."""
-        return f"{self.redis_key_prefix}{osv_id}"
+    def _cache_key(self, osv_id: str) -> str:
+        """Get cache key for OSV ID."""
+        return f"{self.key_prefix}{osv_id}"
 
     def get(self, osv_id: str) -> Optional[MaliciousPackage]:
         """
@@ -70,12 +46,9 @@ class PackageCache:
         Returns:
             MaliciousPackage if found in cache, None otherwise
         """
-        if not self._use_cache:
-            return None
-
         try:
-            key = self._redis_key(osv_id)
-            data = self._redis.get(key)
+            key = self._cache_key(osv_id)
+            data = self.provider.get(key)
             if data:
                 return MaliciousPackage.from_dict(json.loads(data))
             return None
@@ -91,14 +64,10 @@ class PackageCache:
             osv_id: OSV vulnerability ID (e.g., MAL-2025-170599)
             package: MaliciousPackage to cache
         """
-        if not self._use_cache:
-            return
-
         try:
             package_dict = package.to_dict()
-            key = self._redis_key(osv_id)
-            # Store in Redis with no expiration (persist until explicitly purged)
-            self._redis.set(key, json.dumps(package_dict))
+            key = self._cache_key(osv_id)
+            self.provider.put(key, json.dumps(package_dict))
         except Exception as e:
             logger.error(f"Failed to cache package {osv_id}: {e}")
 
@@ -112,12 +81,9 @@ class PackageCache:
         Returns:
             True if package is in cache, False otherwise
         """
-        if not self._use_cache:
-            return False
-
         try:
-            key = self._redis_key(osv_id)
-            return self._redis.exists(key) > 0
+            key = self._cache_key(osv_id)
+            return self.provider.has(key)
         except Exception as e:
             logger.warning(f"Failed to check cache for {osv_id}: {e}")
             return False
@@ -129,17 +95,15 @@ class PackageCache:
         Returns:
             Number of packages removed from cache
         """
-        if not self._use_cache:
-            return 0
-
         try:
-            # Find all keys with our prefix and delete them
-            pattern = f"{self.redis_key_prefix}*"
-            keys = list(self._redis.scan_iter(match=pattern))
+            pattern = f"{self.key_prefix}*"
+            keys = list(self.provider.scan_keys(pattern))
             count = len(keys)
             if count > 0:
-                self._redis.delete(*keys)
-            logger.info(f"Purged {count} packages from Redis cache")
+                self.provider.delete_many(keys)
+            logger.info(
+                f"Purged {count} packages from {self.provider.get_backend_name()} cache"
+            )
             return count
         except Exception as e:
             logger.error(f"Failed to purge cache: {e}")
@@ -152,17 +116,14 @@ class PackageCache:
         Returns:
             Number of cached packages
         """
-        if not self._use_cache:
-            return 0
-
         try:
-            pattern = f"{self.redis_key_prefix}*"
-            return sum(1 for _ in self._redis.scan_iter(match=pattern))
+            pattern = f"{self.key_prefix}*"
+            return sum(1 for _ in self.provider.scan_keys(pattern))
         except Exception as e:
             logger.warning(f"Failed to get cache size: {e}")
             return 0
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics.
 
@@ -170,18 +131,51 @@ class PackageCache:
             Dictionary with cache statistics
         """
         try:
-            if self._use_cache:
-                return {
-                    "total_packages": self.size(),
-                    "backend": "redis",
-                    "redis_connected": True,
-                }
-            else:
-                return {
-                    "total_packages": 0,
-                    "backend": "none",
-                    "cache_enabled": False,
-                }
+            backend = self.provider.get_backend_name()
+            is_connected = self.provider.is_connected()
+
+            return {
+                "total_packages": self.size(),
+                "backend": backend,
+                "cache_enabled": is_connected and backend != "none",
+            }
         except Exception as e:
             logger.warning(f"Failed to get cache stats: {e}")
             return {"total_packages": 0, "backend": "unknown", "error": str(e)}
+
+    def is_cache_enabled(self) -> bool:
+        """
+        Check if cache is enabled and working.
+
+        Returns:
+            True if cache backend is connected, False otherwise
+        """
+        backend = self.provider.get_backend_name()
+        return self.provider.is_connected() and backend != "none"
+
+    def get_cache_backend(self) -> str:
+        """
+        Get the cache backend type.
+
+        Returns:
+            Backend name (e.g., 'redis', 'none')
+        """
+        return self.provider.get_backend_name()
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Check if cache service is healthy.
+
+        Returns:
+            Dict with health status details including enabled, backend, and healthy fields
+        """
+        backend = self.provider.get_backend_name()
+        cache_enabled = backend != "none"
+        cache_healthy = await self.provider.ping()
+
+        # Return structured data for health management
+        return {
+            "enabled": cache_enabled,
+            "backend": backend,
+            "healthy": cache_healthy,
+        }

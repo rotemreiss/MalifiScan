@@ -63,6 +63,14 @@ class MockPackagesFeed(PackagesFeed):
 
         return self.healthy
 
+    def get_cache_stats(self) -> dict:
+        """Mock implementation of get_cache_stats."""
+        return {
+            "total_packages": len(self.packages),
+            "backend": "mock",
+            "cache_enabled": False,
+        }
+
 
 class TestPackagesFeedInterface:
     """Test cases for PackagesFeed interface."""

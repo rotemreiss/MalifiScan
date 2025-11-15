@@ -1,7 +1,7 @@
 """Packages feed interface."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.core.entities import MaliciousPackage
 
@@ -52,5 +52,15 @@ class PackagesFeed(ABC):
 
         Returns:
             True if service is healthy, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics from the feed provider.
+
+        Returns:
+            Dictionary with cache statistics including backend type and package counts
         """
         pass

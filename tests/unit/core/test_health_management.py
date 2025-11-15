@@ -301,7 +301,9 @@ class TestHealthManagementUseCase:
         assert result["overall_healthy"] is False
         assert result["healthy_count"] == 0
         assert result["total_count"] == 1
-        assert result["services"]["none_service"]["healthy"] is None  # Raw value stored
+        assert (
+            result["services"]["none_service"]["healthy"] is False
+        )  # bool(None) = False
 
     @pytest.mark.asyncio
     async def test_get_service_health_status_large_number_of_services(
