@@ -24,6 +24,9 @@ class DummyRegistryService(PackagesRegistryService):
     async def search_packages(self, package_name: str, ecosystem: str):
         return []
 
+    async def search_packages_wildcard(self, prefix: str, ecosystem: str):
+        return []
+
     async def is_package_blocked(self, package):
         return False
 
@@ -38,6 +41,9 @@ class DummyRegistryService(PackagesRegistryService):
 
     async def discover_repositories_by_ecosystem(self, ecosystem: str):
         return ["dummy-repo"]
+
+    async def get_supported_ecosystems(self):
+        return ["npm", "pypi"]
 
 
 @pytest.fixture
