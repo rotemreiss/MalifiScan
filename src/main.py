@@ -121,6 +121,7 @@ class SecurityScannerApp:
                 "packages_registry": service_factory.create_packages_registry(),
                 "notification_service": service_factory.create_notification_service(),
                 "storage_service": service_factory.create_storage_service(),
+                "cache": service_factory.create_cache_service(),
             }
 
             # Create security scanner

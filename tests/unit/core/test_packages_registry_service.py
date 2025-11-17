@@ -155,6 +155,29 @@ class MockPackagesRegistryService(PackagesRegistryService):
         }
         return mock_repositories.get(ecosystem, [])
 
+    async def search_packages_wildcard(
+        self, prefix: str, ecosystem: str
+    ) -> List[Dict[str, Any]]:
+        """Mock implementation of search_packages_wildcard."""
+        if self.should_raise_error:
+            raise Exception(self.error_message)
+
+        # Filter search results based on prefix and ecosystem
+        results = []
+        for result in self.search_results:
+            if result.get("name", "").lower().startswith(prefix.lower()):
+                if result.get("ecosystem") == ecosystem:
+                    results.append(result)
+
+        return results
+
+    async def get_supported_ecosystems(self) -> List[str]:
+        """Mock implementation of get_supported_ecosystems."""
+        if self.should_raise_error:
+            raise Exception(self.error_message)
+
+        return ["npm", "pypi", "maven"]
+
 
 class TestPackagesRegistryServiceInterface:
     """Test cases for PackagesRegistryService interface."""

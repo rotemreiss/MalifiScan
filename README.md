@@ -33,6 +33,8 @@ A security tool that detects malicious packages from external vulnerability feed
   - [Quick Start Configuration](#quick-start-configuration)
   - [Configuration Layers (Priority Order)](#configuration-layers-priority-order)
   - [Configuration Files](#configuration-files)
+- [⚡ Redis Cache](#-redis-cache)
+- [Wildcard Compression](#-wildcard-compression)
 - [📢 Notifications](#-notifications)
 - [📊 Sample Output](#-sample-output)
 - [⚡ Performance Considerations](#-performance-considerations)
@@ -198,9 +200,9 @@ UV is a fast Python package manager that provides better dependency resolution a
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-   # Upgrade pip and install dependencies
+   # Install dependencies from pyproject.toml
    pip install --upgrade pip
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 2. **Initialize configuration**
@@ -456,7 +458,42 @@ storage_service:
   enabled: true
 ```
 
-## 📢 Notifications
+## ⚡ Redis Cache
+
+Malifiscan supports persistent caching of malicious packages using Redis for optimal performance at scale. Redis cache significantly reduces scan times by avoiding repeated fetches from the OSV vulnerability database.
+
+**Benefits:**
+- **Fast Scans**: Cache malicious package data for instant access
+- **Reduced Load**: Minimize calls to external OSV feed
+- **Automatic Fallback**: Gracefully handles Redis unavailability (fetches from source)
+
+**Configuration:**
+
+Enable Redis cache in your `config.local.yaml`:
+
+```yaml
+packages_feed:
+  config:
+    cache:
+      redis_url: "redis://localhost:6379/0"  # null = no cache (fetch from source)
+```
+
+Or via environment variable in `.env`:
+
+```bash
+REDIS_URL=redis://localhost:6379/0
+```
+
+**Cache Behavior:**
+- **Redis Available**: Packages cached in Redis with configurable TTL
+- **Redis Unavailable**: Automatic fallback to no-cache mode (fetches from source)
+- **No File Cache**: Redis-only caching (no file-based fallback)
+
+## Wildcard Compression
+
+For large-scale security scans with thousands of malicious packages, Malifiscan automatically optimizes package searches using intelligent wildcard compression. Instead of searching for each package version individually (e.g., `@scope/pkg-1.0.0`, `@scope/pkg-1.0.1`, `@scope/pkg-1.0.2`), the system groups related packages and searches with wildcards (e.g., `@scope/pkg-*`), dramatically reducing query overhead while maintaining comprehensive coverage. This optimization is especially valuable for ecosystems with scoped packages (npm) or hierarchical structures (Maven), enabling efficient detection of malicious packages even when scanning thousands of entries from the OSV database.
+
+## Notifications
 
 Malifiscan supports configurable notifications to alert your team when malicious packages are detected. Test your notification configuration with built-in testing commands that support both basic connectivity checks and realistic malicious package simulations.
 

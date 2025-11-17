@@ -37,17 +37,29 @@ class HealthManagementUseCase:
 
                     try:
                         health = await service.health_check()
-                        health_results[service_name] = {
-                            "healthy": health,
-                            "status": "healthy" if health else "unhealthy",
-                            "details": (
-                                "Service is responding normally"
-                                if health
-                                else "Service is not responding"
-                            ),
-                        }
+
+                        # Handle dict response (services returning detailed info)
+                        if isinstance(health, dict):
+                            is_healthy = health.get("healthy", True)
+                            health_results[service_name] = {
+                                "healthy": is_healthy,
+                                "status": "healthy" if is_healthy else "unhealthy",
+                                "details": health,  # Pass full dict to CLI for formatting
+                            }
+                        else:
+                            # Handle boolean response (simple health check)
+                            health_results[service_name] = {
+                                "healthy": bool(health),
+                                "status": "healthy" if health else "unhealthy",
+                                "details": (
+                                    "Service is responding normally"
+                                    if health
+                                    else "Service is not responding"
+                                ),
+                            }
+
                         self.logger.debug(
-                            f"Service {service_name}: {'healthy' if health else 'unhealthy'}"
+                            f"Service {service_name}: {'healthy' if health_results[service_name]['healthy'] else 'unhealthy'}"
                         )
                     except Exception as e:
                         health_results[service_name] = {

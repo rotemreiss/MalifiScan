@@ -240,6 +240,7 @@ class ConfigLoader:
             "JFROG_USERNAME": "jfrog_username",
             "JFROG_PASSWORD": "jfrog_password",
             "JFROG_API_KEY": "jfrog_api_key",
+            "REDIS_URL": "packages_feed.config.cache.redis_url",
             "LOG_LEVEL": "logging.level",
             "LOG_FILE_PATH": "logging.file_path",
         }

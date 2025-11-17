@@ -76,6 +76,7 @@ class TestServiceFactory:
             timeout_seconds=30,
             max_retries=3,
             retry_delay=1.0,
+            redis_url=None,
         )
 
     def test_create_packages_feed_unknown_type(self, service_factory):
@@ -341,6 +342,7 @@ class TestServiceFactory:
                 timeout_seconds=30,
                 max_retries=3,
                 retry_delay=1.0,
+                redis_url=None,
             )
 
     def test_create_storage_service_with_default_config(self, service_factory):

@@ -24,6 +24,9 @@ class DummyRegistryService(PackagesRegistryService):
     async def search_packages(self, package_name: str, ecosystem: str):
         return []
 
+    async def search_packages_wildcard(self, prefix: str, ecosystem: str):
+        return []
+
     async def is_package_blocked(self, package):
         return False
 
@@ -39,10 +42,17 @@ class DummyRegistryService(PackagesRegistryService):
     async def discover_repositories_by_ecosystem(self, ecosystem: str):
         return ["dummy-repo"]
 
+    async def get_supported_ecosystems(self):
+        return ["npm", "pypi"]
+
 
 @pytest.fixture
 def db_storage():
-    return DatabaseStorage(database_path=":memory:", in_memory=True)
+    """Create an in-memory database storage for testing with proper cleanup."""
+    storage = DatabaseStorage(database_path=":memory:", in_memory=True)
+    yield storage
+    # Cleanup: dispose of the database engine to prevent resource warnings
+    storage.close()
 
 
 @pytest.fixture

@@ -144,6 +144,19 @@ class MemoryFeed(PackagesFeed):
         logger.debug(f"MemoryFeed available ecosystems: {self._available_ecosystems}")
         return self._available_ecosystems.copy()
 
+    def get_cache_stats(self) -> dict:
+        """
+        Get cache statistics for memory feed.
+
+        Returns:
+            Dictionary with cache statistics (no cache for memory feed)
+        """
+        return {
+            "total_packages": len(self._packages),
+            "backend": "memory",
+            "cache_enabled": False,
+        }
+
     async def health_check(self) -> bool:
         """
         Check if the memory feed is healthy (always returns True).

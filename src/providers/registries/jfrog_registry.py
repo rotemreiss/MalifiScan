@@ -1049,6 +1049,209 @@ class JFrogRegistry(PackagesRegistryService):
             "name": {{"$eq": "{package_name}"}}
         }})"""
 
+    def _build_wildcard_aql_query(
+        self, prefix: str, repo_name: str, ecosystem: str
+    ) -> str:
+        """
+        Build AQL query for wildcard package search.
+
+        Args:
+            prefix: Package name prefix for wildcard matching
+            repo_name: Repository name
+            ecosystem: Package ecosystem
+
+        Returns:
+            AQL query string for wildcard matching
+        """
+        ecosystem_lower = ecosystem.lower()
+
+        if ecosystem_lower == "npm":
+            # For npm packages in .npm directory structure
+            if "/" in prefix:  # Scoped package
+                return f"""items.find({{
+                    "repo": "{repo_name}",
+                    "path": {{"$match": ".npm/{prefix}*"}}
+                }})"""
+            else:
+                return f"""items.find({{
+                    "repo": "{repo_name}",
+                    "path": {{"$match": ".npm/{prefix}*"}}
+                }})"""
+
+        elif ecosystem_lower == "pypi":
+            # For PyPI packages in simple/ directory
+            normalized_prefix = prefix.lower().replace("_", "-")
+            return f"""items.find({{
+                "repo": "{repo_name}",
+                "path": {{"$match": "simple/{normalized_prefix}*"}}
+            }})"""
+
+        elif ecosystem_lower == "maven":
+            # For Maven packages with group/artifact structure
+            return f"""items.find({{
+                "repo": "{repo_name}",
+                "name": {{"$match": "{prefix}*"}}
+            }})"""
+
+        else:
+            # Generic wildcard for other ecosystems
+            return f"""items.find({{
+                "repo": "{repo_name}",
+                "name": {{"$match": "{prefix}*"}}
+            }})"""
+
+    async def search_packages_batch(
+        self,
+        package_names: List[str],
+        ecosystem: str,
+        wildcard_prefix: Optional[str] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Search for multiple packages using wildcard query or individual queries.
+
+        When wildcard_prefix is provided, searches using pattern matching
+        and validates results to filter false positives.
+
+        Args:
+            package_names: List of package names to search for
+            ecosystem: Package ecosystem (npm, PyPI, etc.)
+            wildcard_prefix: Optional wildcard prefix for batch query
+
+        Returns:
+            Dictionary mapping package names to their search results
+        """
+        try:
+            session = await self._get_session()
+            repo_names = await self.discover_repositories_by_ecosystem(ecosystem)
+
+            if not repo_names:
+                logger.warning(f"No repositories found for ecosystem: {ecosystem}")
+                return {name: [] for name in package_names}
+
+            results_by_package: Dict[str, List[Dict[str, Any]]] = {
+                name: [] for name in package_names
+            }
+
+            for repo_name in repo_names:
+                if wildcard_prefix:
+                    # Use wildcard query for batch search
+                    aql_query = self._build_wildcard_aql_query(
+                        wildcard_prefix, repo_name, ecosystem
+                    )
+
+                    logger.debug(
+                        f"Wildcard search for '{wildcard_prefix}*' in {repo_name} ({len(package_names)} packages)"
+                    )
+                else:
+                    # Fall back to individual query (shouldn't happen in batch mode)
+                    logger.warning(
+                        "search_packages_batch called without wildcard_prefix"
+                    )
+                    return {name: [] for name in package_names}
+
+                search_url = f"{self.base_url}/artifactory/api/search/aql"
+                headers = {"Content-Type": "text/plain"}
+
+                async with session.post(
+                    search_url, data=aql_query, headers=headers
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+
+                        # Filter results to match exact package names
+                        for item in results:
+                            # Extract actual package name from result
+                            ecosystem_lower = ecosystem.lower()
+                            actual_name = None
+
+                            if ecosystem_lower == "npm":
+                                # Extract from path: .npm/package-name/...
+                                path = item.get("path", "")
+                                if path.startswith(".npm/"):
+                                    path_parts = path[5:].split("/")
+                                    if path_parts:
+                                        actual_name = path_parts[0]
+
+                            elif ecosystem_lower == "pypi":
+                                # Extract from path: simple/package-name
+                                path = item.get("path", "")
+                                if path.startswith("simple/"):
+                                    actual_name = path[7:].rstrip("/")
+
+                            else:
+                                # For other ecosystems, use name field
+                                actual_name = item.get("name", "")
+
+                            # Validate this item matches one of our target packages
+                            if actual_name in package_names:
+                                # Additional validation for exact match
+                                is_match = False
+
+                                if ecosystem_lower == "npm":
+                                    is_match = self._is_npm_exact_match(
+                                        item, actual_name
+                                    )
+                                elif ecosystem_lower == "pypi":
+                                    is_match = self._is_pypi_exact_match(
+                                        item, actual_name
+                                    )
+                                elif ecosystem_lower == "maven":
+                                    is_match = self._is_maven_exact_match(
+                                        item, actual_name
+                                    )
+                                else:
+                                    is_match = self._is_generic_exact_match(
+                                        item, actual_name
+                                    )
+
+                                if is_match:
+                                    # Format result
+                                    result_item = self._format_search_result(
+                                        item, ecosystem
+                                    )
+                                    results_by_package[actual_name].append(result_item)
+
+                    else:
+                        logger.warning(
+                            f"Wildcard search failed for {repo_name}: {response.status}"
+                        )
+
+            # Log statistics
+            found_count = sum(1 for results in results_by_package.values() if results)
+            logger.info(
+                f"Wildcard search '{wildcard_prefix}*': found {found_count}/{len(package_names)} packages"
+            )
+
+            return results_by_package
+
+        except Exception as e:
+            logger.error(f"Error in batch search with wildcard: {e}")
+            return {name: [] for name in package_names}
+
+    def _format_search_result(
+        self, item: Dict[str, Any], ecosystem: str
+    ) -> Dict[str, Any]:
+        """Format a search result item into standardized format."""
+        name = item.get("name", "")
+        version = ""
+
+        if ecosystem.lower() == "npm":
+            version = self._extract_version_from_filename(name, "", ecosystem)
+
+        return {
+            "name": name,
+            "path": item.get("path", ""),
+            "repo": item.get("repo", ""),
+            "type": item.get("type", ""),
+            "size": item.get("size", 0),
+            "created": item.get("created", ""),
+            "modified": item.get("modified", ""),
+            "sha1": item.get("actual_sha1", ""),
+            "sha256": item.get("sha256", ""),
+            "version": version,
+        }
+
     async def search_packages(
         self, package_name: str, ecosystem: str
     ) -> List[Dict[str, Any]]:
@@ -1063,9 +1266,15 @@ class JFrogRegistry(PackagesRegistryService):
             List of package information dictionaries
         """
         try:
+            logger.debug(
+                f"Starting search for package: {package_name} in ecosystem: {ecosystem}"
+            )
             session = await self._get_session()
 
             repo_names = await self.discover_repositories_by_ecosystem(ecosystem)
+            logger.debug(
+                f"Discovered {len(repo_names)} repositories for {ecosystem}: {repo_names}"
+            )
 
             if not repo_names:
                 logger.warning(f"No repositories found for ecosystem: {ecosystem}")
@@ -1074,7 +1283,10 @@ class JFrogRegistry(PackagesRegistryService):
             # Search across all discovered repositories
             all_results = []
 
-            for repo_name in repo_names:
+            for idx, repo_name in enumerate(repo_names):
+                logger.debug(
+                    f"Searching in repository {idx + 1}/{len(repo_names)}: {repo_name}"
+                )
 
                 # Use AQL (Artifactory Query Language) for search
                 # Use ecosystem-specific exact matching to avoid false positives
@@ -1090,8 +1302,11 @@ class JFrogRegistry(PackagesRegistryService):
 
                 search_url = f"{self.base_url}/artifactory/api/search/aql"
 
-                logger.info(f"Searching packages with AQL in {repo_name}: {search_url}")
-                logger.info(f"AQL query: {aql_query}")
+                logger.info(
+                    f"[JFrog AQL] Searching in {repo_name} for package: {package_name}"
+                )
+                logger.debug(f"Sending AQL search request to {repo_name}: {search_url}")
+                logger.debug(f"AQL query: {aql_query}")
 
                 # AQL queries are sent as plain text in POST body with text/plain content-type
                 headers = {"Content-Type": "text/plain"}
@@ -1100,12 +1315,20 @@ class JFrogRegistry(PackagesRegistryService):
                     search_url, data=aql_query, headers=headers
                 ) as response:
                     logger.info(
+                        f"[JFrog AQL] Response from {repo_name}: {response.status}"
+                    )
+                    logger.debug(
                         f"AQL search response status for {repo_name}: {response.status}"
                     )
 
                     if response.status == 200:
                         data = await response.json()
-                        logger.info(f"AQL search response for {repo_name}: {data}")
+                        logger.info(
+                            f"[JFrog AQL] Found {len(data.get('results', []))} results in {repo_name}"
+                        )
+                        logger.debug(
+                            f"AQL search returned {len(data.get('results', []))} results for {repo_name}"
+                        )
 
                         results = data.get("results", [])
 
@@ -1176,14 +1399,187 @@ class JFrogRegistry(PackagesRegistryService):
             else:
                 formatted_results = package_json_files + formatted_results
 
-            logger.info(
-                f"Found {len(formatted_results)} packages matching '{package_name}' in {ecosystem}"
+            logger.debug(
+                f"Completed search for '{package_name}' in {ecosystem}: found {len(formatted_results)} results"
             )
             return formatted_results
 
         except Exception as e:
             logger.error(f"Error searching packages with AQL: {e}")
             return []
+
+    async def search_packages_wildcard(
+        self, prefix: str, ecosystem: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for packages using wildcard pattern to match multiple packages in one query.
+
+        This method uses AQL wildcard matching ($match operator) to search for all packages
+        that start with the given prefix, reducing the number of API calls significantly.
+
+        Args:
+            prefix: Package name prefix (e.g., "async" to match "async", "asyncio", etc.)
+            ecosystem: Package ecosystem (npm, PyPI, etc.)
+
+        Returns:
+            List of package information dictionaries for all matching packages
+        """
+        try:
+            logger.debug(
+                f"Starting wildcard search for prefix: {prefix}* in ecosystem: {ecosystem}"
+            )
+            session = await self._get_session()
+
+            repo_names = await self.discover_repositories_by_ecosystem(ecosystem)
+            logger.debug(
+                f"Discovered {len(repo_names)} repositories for {ecosystem}: {repo_names}"
+            )
+
+            if not repo_names:
+                logger.warning(f"No repositories found for ecosystem: {ecosystem}")
+                return []
+
+            # Search across all discovered repositories
+            all_results = []
+
+            for idx, repo_name in enumerate(repo_names):
+                logger.debug(
+                    f"Wildcard searching in repository {idx + 1}/{len(repo_names)}: {repo_name}"
+                )
+
+                # Build ecosystem-specific wildcard AQL query
+                ecosystem_lower = ecosystem.lower()
+                if ecosystem_lower == "npm":
+                    aql_query = self._build_npm_wildcard_aql_query(prefix, repo_name)
+                elif ecosystem_lower == "pypi":
+                    aql_query = self._build_pypi_wildcard_aql_query(prefix, repo_name)
+                elif ecosystem_lower == "maven":
+                    aql_query = self._build_maven_wildcard_aql_query(prefix, repo_name)
+                else:
+                    aql_query = self._build_generic_wildcard_aql_query(
+                        prefix, repo_name
+                    )
+
+                search_url = f"{self.base_url}/artifactory/api/search/aql"
+
+                logger.info(
+                    f"[JFrog AQL Wildcard] Searching in {repo_name} for prefix: {prefix}*"
+                )
+                logger.debug(f"Wildcard AQL query: {aql_query}")
+
+                # AQL queries are sent as plain text in POST body
+                headers = {"Content-Type": "text/plain"}
+
+                async with session.post(
+                    search_url, data=aql_query, headers=headers
+                ) as response:
+                    logger.info(
+                        f"[JFrog AQL Wildcard] Response from {repo_name}: {response.status}"
+                    )
+
+                    if response.status == 200:
+                        data = await response.json()
+                        results = data.get("results", [])
+                        logger.info(
+                            f"[JFrog AQL Wildcard] Found {len(results)} results in {repo_name}"
+                        )
+                        all_results.extend(results)
+                    else:
+                        logger.warning(
+                            f"Wildcard search failed for repository {repo_name} with status: {response.status}"
+                        )
+
+            # Process and format all results
+            formatted_results = []
+            for item in all_results:
+                version = ""
+                name = item.get("name", "")
+
+                if ecosystem.lower() == "npm":
+                    # Extract version from filename
+                    # For wildcard results, we'll extract package name from path
+                    path = item.get("path", "")
+                    if path.startswith(".npm/"):
+                        # Remove .npm/ prefix
+                        path_after_npm = path[5:]
+
+                        # Handle scoped packages (@scope/name) vs regular packages
+                        if path_after_npm.startswith("@"):
+                            # Scoped package: extract @scope/name
+                            parts = path_after_npm.split("/")
+                            if len(parts) >= 2:
+                                package_name = f"{parts[0]}/{parts[1]}"  # @scope/name
+                            else:
+                                package_name = parts[0]
+                        else:
+                            # Regular package: just the first part
+                            package_name = path_after_npm.split("/")[0]
+
+                        version = self._extract_version_from_filename(
+                            name, package_name, ecosystem
+                        )
+                    else:
+                        package_name = ""
+                        version = ""
+                else:
+                    package_name = name
+
+                result_item = {
+                    "name": name,
+                    "package_name": package_name,  # Add extracted package name for wildcard results
+                    "path": item.get("path", ""),
+                    "repo": item.get("repo", ""),
+                    "type": item.get("type", ""),
+                    "size": item.get("size", 0),
+                    "created": item.get("created", ""),
+                    "modified": item.get("modified", ""),
+                    "sha1": item.get("actual_sha1", ""),
+                    "sha256": item.get("sha256", ""),
+                    "version": version,
+                }
+
+                formatted_results.append(result_item)
+
+            logger.debug(
+                f"Completed wildcard search for '{prefix}*' in {ecosystem}: found {len(formatted_results)} results"
+            )
+            return formatted_results
+
+        except Exception as e:
+            logger.error(f"Error in wildcard search with AQL: {e}")
+            return []
+
+    def _build_npm_wildcard_aql_query(self, prefix: str, repo_name: str) -> str:
+        """Build AQL query for npm packages with wildcard prefix matching."""
+        # Match any package that starts with the prefix
+        return f"""items.find({{
+            "repo": "{repo_name}",
+            "path": {{"$match": ".npm/{prefix}*"}}
+        }})"""
+
+    def _build_pypi_wildcard_aql_query(self, prefix: str, repo_name: str) -> str:
+        """Build AQL query for PyPI packages with wildcard prefix matching."""
+        # Normalize prefix according to PEP 503
+        normalized_prefix = prefix.lower().replace("_", "-")
+        return f"""items.find({{
+            "repo": "{repo_name}",
+            "path": {{"$match": "simple/{normalized_prefix}*"}}
+        }})"""
+
+    def _build_maven_wildcard_aql_query(self, prefix: str, repo_name: str) -> str:
+        """Build AQL query for Maven packages with wildcard prefix matching."""
+        # For Maven, match artifact names
+        return f"""items.find({{
+            "repo": "{repo_name}",
+            "name": {{"$match": "{prefix}*"}}
+        }})"""
+
+    def _build_generic_wildcard_aql_query(self, prefix: str, repo_name: str) -> str:
+        """Build AQL query for generic packages with wildcard prefix matching."""
+        return f"""items.find({{
+            "repo": "{repo_name}",
+            "name": {{"$match": "{prefix}*"}}
+        }})"""
 
     async def health_check(self) -> bool:
         """Check if JFrog Artifactory is accessible."""

@@ -95,6 +95,25 @@ class PackagesRegistryService(ABC):
         pass
 
     @abstractmethod
+    async def search_packages_wildcard(
+        self, prefix: str, ecosystem: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for packages using wildcard pattern (prefix matching).
+
+        Args:
+            prefix: Package name prefix to search for
+            ecosystem: Package ecosystem (npm, PyPI, etc.)
+
+        Returns:
+            List of package information dictionaries matching the prefix
+
+        Raises:
+            RegistryError: If search operation fails
+        """
+        pass
+
+    @abstractmethod
     async def is_package_blocked(self, package: MaliciousPackage) -> bool:
         """
         Check if a package is blocked in the registry.
@@ -143,6 +162,22 @@ class PackagesRegistryService(ABC):
 
         Raises:
             RegistryError: If discovery operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_supported_ecosystems(self) -> List[str]:
+        """
+        Get list of supported package ecosystems.
+
+        Args:
+            None
+
+        Returns:
+            List of ecosystem names supported by this registry
+
+        Raises:
+            RegistryError: If query fails
         """
         pass
 

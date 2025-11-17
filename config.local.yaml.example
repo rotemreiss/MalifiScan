@@ -36,3 +36,12 @@ packages_registry:
 #       ecosystem_overrides:
 #         npm: "my-npm-repo"
 #         PyPI: "my-python-repo"
+
+# Enable Redis cache for faster OSV package fetching
+# Without Redis, packages are fetched from source (GCS) on every scan
+# packages_feed:
+#   config:
+#     cache:
+#       redis_url: "redis://localhost:6379/0"  # Enable Redis cache
+#       # Note: When redis_url is null or Redis is unavailable,
+#       # no caching is performed (packages fetched fresh each time)

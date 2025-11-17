@@ -100,7 +100,20 @@ async def test_security_analysis_sends_notification_on_critical_findings(
         mock_registry_service = MagicMock()  # Base as MagicMock
         mock_registry_service.health_check = AsyncMock(return_value=True)
         mock_registry_service.get_registry_name.return_value = "TestRegistry"
+        mock_registry_service.get_supported_ecosystems = AsyncMock(return_value=["npm"])
+        mock_registry_service.discover_repositories_by_ecosystem = AsyncMock(
+            return_value=["npm-local"]
+        )
         mock_registry_service.search_packages = AsyncMock(
+            return_value=[
+                {
+                    "name": sample_npm_malicious_package.name,
+                    "version": sample_npm_malicious_package.version,
+                    "ecosystem": sample_npm_malicious_package.ecosystem,
+                }
+            ]
+        )
+        mock_registry_service.search_packages_wildcard = AsyncMock(
             return_value=[
                 {
                     "name": sample_npm_malicious_package.name,
@@ -160,7 +173,19 @@ async def test_security_analysis_no_notification_when_disabled(
     mock_registry_service = MagicMock()  # Base as MagicMock
     mock_registry_service.health_check = AsyncMock(return_value=True)
     mock_registry_service.get_registry_name.return_value = "TestRegistry"
+    mock_registry_service.get_supported_ecosystems = AsyncMock(return_value=["npm"])
+    mock_registry_service.discover_repositories_by_ecosystem = AsyncMock(
+        return_value=["npm-local"]
+    )
     mock_registry_service.search_packages = AsyncMock(
+        return_value=[
+            {
+                "name": sample_npm_malicious_package.name,
+                "version": sample_npm_malicious_package.version,
+            }
+        ]
+    )
+    mock_registry_service.search_packages_wildcard = AsyncMock(
         return_value=[
             {
                 "name": sample_npm_malicious_package.name,
@@ -276,7 +301,19 @@ async def test_notification_error_handling_in_security_analysis(
         mock_registry_service = MagicMock()  # Base as MagicMock
         mock_registry_service.health_check = AsyncMock(return_value=True)
         mock_registry_service.get_registry_name.return_value = "TestRegistry"
+        mock_registry_service.get_supported_ecosystems = AsyncMock(return_value=["npm"])
+        mock_registry_service.discover_repositories_by_ecosystem = AsyncMock(
+            return_value=["npm-local"]
+        )
         mock_registry_service.search_packages = AsyncMock(
+            return_value=[
+                {
+                    "name": sample_npm_malicious_package.name,
+                    "version": sample_npm_malicious_package.version,
+                }
+            ]
+        )
+        mock_registry_service.search_packages_wildcard = AsyncMock(
             return_value=[
                 {
                     "name": sample_npm_malicious_package.name,

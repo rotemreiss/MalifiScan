@@ -60,7 +60,6 @@ jobs:
             - '**/*.yml'
             - '**/*.yaml'
             - 'pyproject.toml'
-            - 'requirements*.txt'
             - 'uv.lock'
 
     - name: Install uv

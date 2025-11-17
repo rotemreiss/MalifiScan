@@ -46,6 +46,9 @@ class DataManagementUseCase:
                 max_packages=limit, hours=hours
             )
 
+            # Get cache statistics
+            cache_stats = self.packages_feed.get_cache_stats()
+
             # Filter by ecosystem if specified
             if ecosystem:
                 packages = [
@@ -64,6 +67,7 @@ class DataManagementUseCase:
                 "packages": packages,
                 "total_packages": len(packages),
                 "ecosystems": ecosystems,
+                "cache_stats": cache_stats,
                 "filter_info": {"ecosystem": ecosystem, "limit": limit, "hours": hours},
             }
 

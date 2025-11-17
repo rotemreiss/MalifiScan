@@ -4,7 +4,7 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from rich.console import Console
 from rich.progress import (
@@ -19,6 +19,7 @@ from rich.table import Table
 
 # Import our application components
 from src.config.config_loader import Config
+from src.core.entities import MaliciousPackage
 from src.core.entities.registry_package_match import RegistryPackageMatchBuilder
 from src.core.usecases import ConfigurationManagementUseCase
 from src.main import SecurityScannerApp  # Import the main app class
@@ -302,6 +303,59 @@ class SecurityScannerCLI:
                 await registry.close()
             return False
 
+    def _parse_inject_packages(
+        self, inject_packages_str: str
+    ) -> List["MaliciousPackage"]:
+        """
+        Parse inject packages string and create MaliciousPackage objects.
+
+        Format: "ecosystem:name:version,ecosystem:name:version"
+        Example: "npm:lodash:4.17.21,PyPI:requests:2.28.0"
+
+        Args:
+            inject_packages_str: Comma-separated list of packages
+
+        Returns:
+            List of MaliciousPackage objects
+        """
+        from datetime import datetime, timezone
+
+        from src.core.entities import MaliciousPackage
+
+        packages = []
+        if not inject_packages_str:
+            return packages
+
+        for package_str in inject_packages_str.split(","):
+            parts = package_str.strip().split(":")
+            if len(parts) != 3:
+                self.console.print(
+                    f"⚠️  Invalid package format: {package_str} (expected ecosystem:name:version)",
+                    style="yellow",
+                )
+                continue
+
+            ecosystem, name, version = parts
+
+            # Create a test malicious package
+            package = MaliciousPackage(
+                name=name,
+                version=version,
+                ecosystem=ecosystem,
+                package_url=f"pkg:{ecosystem.lower()}/{name}@{version}",
+                advisory_id=f"TEST-INJECT-{name.upper()}",
+                summary=f"Test injected package: {name} ({ecosystem})",
+                details="This is a test package injected via --inject-packages for demonstration purposes.",
+                aliases=[],
+                affected_versions=[version],
+                database_specific={"injected": True, "test": True},
+                published_at=datetime.now(timezone.utc),
+                modified_at=datetime.now(timezone.utc),
+            )
+            packages.append(package)
+
+        return packages
+
     async def security_crossref(
         self,
         hours: int = 6,
@@ -310,6 +364,7 @@ class SecurityScannerCLI:
         no_report: bool = False,
         block: bool = False,
         no_notifications: bool = False,
+        inject_packages: Optional[str] = None,
     ) -> bool:
         """Cross-reference malicious packages from feed with package registry."""
         try:
@@ -332,6 +387,13 @@ class SecurityScannerCLI:
                     "🚫 Block mode: Will proactively block malicious packages",
                     style="bold red",
                 )
+
+            if inject_packages:
+                self.console.print(
+                    "💉 Test mode: Injecting additional packages for testing",
+                    style="bold yellow",
+                )
+
             self.console.print()
 
             if not self.app:
@@ -352,13 +414,13 @@ class SecurityScannerCLI:
                 transient=False,
             ) as progress:
                 fetch_task = progress.add_task(
-                    "Fetching malicious packages from the Malicious packages feed...",
+                    "Fetching malicious package IDs and gathering detailed information...",
                     total=None,
                 )
 
                 # Fetch packages from the feed
                 fetch_result = await self.app.fetch_packages_feed_data(
-                    ecosystem, limit or 1000, hours
+                    ecosystem, limit, hours
                 )
 
                 if not fetch_result["success"]:
@@ -371,6 +433,15 @@ class SecurityScannerCLI:
 
                 progress.update(fetch_task, description="✅ Feed fetch complete")
                 malicious_packages = fetch_result["packages"]
+
+            # Inject additional test packages if specified
+            if inject_packages:
+                injected = self._parse_inject_packages(inject_packages)
+                if injected:
+                    malicious_packages.extend(injected)
+                    self.console.print(
+                        f"💉 Injected {len(injected)} test packages", style="yellow"
+                    )
 
             if not malicious_packages:
                 ecosystem_desc = (
@@ -390,6 +461,18 @@ class SecurityScannerCLI:
                 f"📦 Found {len(malicious_packages)} malicious packages from feed{ecosystem_suffix}",
                 style="green",
             )
+
+            # Show cache hit/miss statistics from the fetch
+            if fetch_result.get("cache_stats"):
+                cache_stats = fetch_result["cache_stats"]
+                hits = cache_stats.get("last_fetch_hits", 0)
+                misses = cache_stats.get("last_fetch_misses", 0)
+                hit_rate = cache_stats.get("last_fetch_hit_rate", 0)
+                if hits > 0 or misses > 0:
+                    self.console.print(
+                        f"💾 Cache: {hits} hits, {misses} misses ({hit_rate:.1f}% hit rate)",
+                        style="cyan",
+                    )
 
             # Show ecosystem breakdown if available and not filtering by single ecosystem
             if not ecosystem and fetch_result.get("ecosystems"):
@@ -453,6 +536,42 @@ class SecurityScannerCLI:
                 style="yellow",
             )
 
+            # Calculate and display compression statistics
+            from src.core.wildcard_compressor import WildcardCompressor
+
+            compressor = WildcardCompressor(min_group_size=2)
+
+            # Group packages by ecosystem
+            packages_by_ecosystem = {}
+            for pkg in malicious_packages:
+                if pkg.ecosystem not in packages_by_ecosystem:
+                    packages_by_ecosystem[pkg.ecosystem] = []
+                packages_by_ecosystem[pkg.ecosystem].append(pkg)
+
+            # Calculate compression for each ecosystem
+            total_original = 0
+            total_compressed = 0
+            for eco, pkgs in packages_by_ecosystem.items():
+                wildcard_groups, individual_packages = compressor.compress_packages(
+                    pkgs
+                )
+                original_count = len(pkgs)
+                compressed_count = len(wildcard_groups) + len(individual_packages)
+                total_original += original_count
+                total_compressed += compressed_count
+
+            # Display compression stats
+            if total_original > 0:
+                reduction = ((total_original - total_compressed) / total_original) * 100
+                compression_ratio = (
+                    total_original / total_compressed if total_compressed > 0 else 1
+                )
+                self.console.print(
+                    f"🗜️  Compression: {total_original} packages → {total_compressed} queries "
+                    f"({reduction:.1f}% reduction, {compression_ratio:.2f}x compression)",
+                    style="cyan",
+                )
+
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -464,17 +583,17 @@ class SecurityScannerCLI:
                     total=None,
                 )
 
-                # Use the core app for business logic
-                analysis_result = await self.app.security_crossref_analysis_with_blocking(
-                    hours,
-                    ecosystem,
-                    limit,
-                    not no_report,
-                    False,
-                    not no_notifications,  # Set block=False since we already blocked above
-                    progress_callback=lambda msg, current, total: progress.update(
-                        analysis_task, description=msg
-                    ),
+                # Use the core app for business logic - pass already-fetched packages
+                # to avoid fetching them again from OSV
+                analysis_result = (
+                    await self.app.security_analysis.crossref_analysis_with_packages(
+                        malicious_packages=malicious_packages,
+                        save_report=not no_report,
+                        send_notifications=not no_notifications,
+                        progress_callback=lambda msg, current, total: progress.update(
+                            analysis_task, description=msg
+                        ),
+                    )
                 )
 
                 if not analysis_result["success"]:
@@ -530,9 +649,18 @@ class SecurityScannerCLI:
                     self.console.print(
                         f"   📦\tMalicious versions: {', '.join(match['malicious_versions'])}"
                     )
-                    self.console.print(
-                        f"   🏗️\t{registry_name} versions: {', '.join(match[field_names['all_versions_field']])}"
-                    )
+
+                    # Check if all versions field exists (might not for injected test packages)
+                    all_versions_field = field_names["all_versions_field"]
+                    if all_versions_field in match and match[all_versions_field]:
+                        self.console.print(
+                            f"   🏗️\t{registry_name} versions: {', '.join(match[all_versions_field])}"
+                        )
+                    else:
+                        self.console.print(
+                            f"   🏗️\t{registry_name} versions: [Version info unavailable]"
+                        )
+
                     self.console.print(
                         f"   ⚠️\tMATCHING VERSIONS: {', '.join(match['matching_versions'])}",
                         style="bold red",
@@ -560,9 +688,18 @@ class SecurityScannerCLI:
                     self.console.print(
                         f"   📦\tMalicious versions: {', '.join(safe['malicious_versions'])}"
                     )
-                    self.console.print(
-                        f"   🏗️\t{registry_name} versions: {', '.join(safe[field_names['versions_field']])}"
-                    )
+
+                    # Check if registry versions field exists (might not for injected test packages)
+                    versions_field = field_names["versions_field"]
+                    if versions_field in safe and safe[versions_field]:
+                        self.console.print(
+                            f"   🏗️\t{registry_name} versions: {', '.join(safe[versions_field])}"
+                        )
+                    else:
+                        self.console.print(
+                            f"   🏗️\t{registry_name} versions: [Found in registry but version info unavailable]"
+                        )
+
                     if repositories_searched:
                         repos_display = ", ".join(repositories_searched)
                         if len(repos_display) > 60:  # Truncate if too long
@@ -583,8 +720,23 @@ class SecurityScannerCLI:
                     style="yellow",
                 )
                 for error in errors[:5]:  # Show first 5 errors
+                    # Handle both dict and string error formats
+                    if isinstance(error, dict):
+                        pkg_name = error.get("package", "Unknown package")
+                        error_msg = error.get("error", str(error))
+                        # Handle case where package might be an object
+                        if hasattr(pkg_name, "name"):
+                            pkg_name = pkg_name.name
+                    else:
+                        pkg_name = "Unknown package"
+                        error_msg = str(error)
+
+                    # Truncate long error messages
+                    if len(error_msg) > 100:
+                        error_msg = error_msg[:100] + "..."
+
                     self.console.print(
-                        f"   • {error['package']}: {error['error'][:100]}...",
+                        f"   • {pkg_name}: {error_msg}",
                         style="dim",
                     )
                 if len(errors) > 5:
@@ -784,9 +936,18 @@ class SecurityScannerCLI:
                     self.console.print(
                         f"   📦 Malicious versions: {', '.join(match['malicious_versions'])}"
                     )
-                    self.console.print(
-                        f"   🏗️ {registry_name} versions: {', '.join(match[field_names['all_versions_field']])}"
-                    )
+
+                    # Check if all versions field exists (might not for injected test packages)
+                    all_versions_field = field_names["all_versions_field"]
+                    if all_versions_field in match and match[all_versions_field]:
+                        self.console.print(
+                            f"   🏗️ {registry_name} versions: {', '.join(match[all_versions_field])}"
+                        )
+                    else:
+                        self.console.print(
+                            f"   🏗️ {registry_name} versions: [Version info unavailable]"
+                        )
+
                     self.console.print(
                         f"   ⚠️ MATCHING VERSIONS: {', '.join(match['matching_versions'])}",
                         style="bold red",
@@ -1165,6 +1326,40 @@ class SecurityScannerCLI:
             self.console.print(f"❌ Error fetching from feed: {e}", style="red")
             return False
 
+    def _format_service_details(self, service_name: str, details) -> str:
+        """
+        Format service health details for display.
+
+        Args:
+            service_name: Name of the service
+            details: Service details (bool, dict, or string)
+
+        Returns:
+            Formatted details string
+        """
+        # Handle cache service with dict response
+        if service_name == "cache" and isinstance(details, dict):
+            if "enabled" in details:
+                if details.get("enabled"):
+                    backend = details.get("backend", "unknown").title()
+                    if details.get("healthy", True):
+                        return f"✅ {backend} connected"
+                    else:
+                        return f"⚠️ {backend} unhealthy"
+                else:
+                    return "ℹ️ Cache disabled (no-cache mode)"
+
+        # Handle boolean response
+        if isinstance(details, bool):
+            return (
+                "Service is responding normally"
+                if details
+                else "Service is not responding"
+            )
+
+        # Handle string or other types
+        return str(details)
+
     async def health_check(self) -> bool:
         """Check health of all services."""
         try:
@@ -1200,7 +1395,12 @@ class SecurityScannerCLI:
                 else:
                     status = "❌ Unhealthy"
 
-                table.add_row(service_name.title(), status, health_info["details"])
+                # Format details based on service type
+                details = self._format_service_details(
+                    service_name, health_info["details"]
+                )
+
+                table.add_row(service_name.title(), status, details)
 
             self.console.print(table)
 
@@ -1612,8 +1812,8 @@ class SecurityScannerCLI:
             return False
 
 
-async def async_main():
-    """Async main CLI entry point."""
+async def main():
+    """Main CLI entry point."""
     parser = argparse.ArgumentParser(
         description="Security Scanner CLI - Manual testing and administration tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1735,6 +1935,11 @@ Examples:
         action="store_true",
         help="Disable sending notifications for critical findings (default: false)",
     )
+    crossref_parser.add_argument(
+        "--inject-packages",
+        type=str,
+        help='Inject additional test packages (format: "ecosystem:name:version,ecosystem:name:version"). Example: "npm:lodash:4.17.21,PyPI:requests:2.28.0"',
+    )
 
     results_parser = scan_subparsers.add_parser(
         "results", help="View scan results and findings"
@@ -1848,6 +2053,7 @@ Examples:
                     args.no_report,
                     args.block,
                     args.no_notifications,
+                    args.inject_packages,
                 )
             elif args.scan_action == "results":
                 if args.scan_id:
@@ -1884,10 +2090,5 @@ Examples:
         sys.exit(1)
 
 
-def main():
-    """Synchronous entry point for the CLI."""
-    asyncio.run(async_main())
-
-
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
