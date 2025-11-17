@@ -34,7 +34,7 @@ A security tool that detects malicious packages from external vulnerability feed
   - [Configuration Layers (Priority Order)](#configuration-layers-priority-order)
   - [Configuration Files](#configuration-files)
 - [⚡ Redis Cache](#-redis-cache)
-- [Wildcard Compression](#-wildcard-compression)
+- [Wildcard Compression](#wildcard-compression)
 - [📢 Notifications](#-notifications)
 - [📊 Sample Output](#-sample-output)
 - [⚡ Performance Considerations](#-performance-considerations)
