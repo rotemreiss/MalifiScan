@@ -48,7 +48,11 @@ class DummyRegistryService(PackagesRegistryService):
 
 @pytest.fixture
 def db_storage():
-    return DatabaseStorage(database_path=":memory:", in_memory=True)
+    """Create an in-memory database storage for testing with proper cleanup."""
+    storage = DatabaseStorage(database_path=":memory:", in_memory=True)
+    yield storage
+    # Cleanup: dispose of the database engine to prevent resource warnings
+    storage.close()
 
 
 @pytest.fixture

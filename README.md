@@ -200,9 +200,9 @@ UV is a fast Python package manager that provides better dependency resolution a
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-   # Upgrade pip and install dependencies
+   # Install dependencies from pyproject.toml
    pip install --upgrade pip
-   pip install -r requirements.txt
+   pip install -e .
    ```
 
 2. **Initialize configuration**

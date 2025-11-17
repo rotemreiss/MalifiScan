@@ -46,7 +46,7 @@ To extend with a new cache backend (e.g., Memcached, DynamoDB):
 
 ### Installation
 
-#### Option 1: Using UV (Recommended for Development)
+#### Using UV
 
 UV provides faster dependency resolution and better development experience.
 
@@ -61,33 +61,6 @@ UV provides faster dependency resolution and better development experience.
 
    # Install all dependencies (including dev dependencies)
    uv sync --dev
-   ```
-
-3. **Configure the application**
-   ```bash
-   # Create .env file from example (if available) or create new one
-   cp .env.example .env  # Edit .env with your JFrog details after copying it.
-   ```
-
-#### Option 2: Using pip (Traditional)
-
-1. **Clone the repository**
-   ```bash
-  git clone <repository-url>
-  cd malifiscan
-   ```
-
-2. **Setup Python environment**
-   ```bash
-   # Create virtual environment
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-   # Upgrade pip
-   pip install --upgrade pip
-
-   # Install dependencies
-   pip install -r requirements.txt
    ```
 
 3. **Configure the application**
@@ -205,7 +178,7 @@ storage_service:
 
 ## 🔄 Development Workflow
 
-### Using UV (Recommended)
+### Using UV
 
 UV provides a faster and more reliable development experience:
 
@@ -232,27 +205,6 @@ uv run flake8 src/ tests/
 
 # Sync dependencies after changes
 uv sync --dev
-```
-
-### Using pip/venv (Traditional)
-
-```bash
-# Activate environment (always required)
-source venv/bin/activate
-
-# Run the application
-python cli.py health check
-python cli.py scan crossref
-
-# Run tests
-pytest tests/unit/ -m "not integration"  # Unit tests
-pytest tests/ -m integration       # Integration tests
-
-# Install additional dependencies
-pip install black isort flake8
-
-# Update requirements
-pip freeze > requirements.txt
 ```
 
 ## 🧪 Testing

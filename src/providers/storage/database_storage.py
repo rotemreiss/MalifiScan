@@ -664,6 +664,20 @@ class DatabaseStorage(StorageService):
         except Exception:
             return False
 
+    def close(self) -> None:
+        """
+        Close database connections and dispose of the engine.
+
+        This method should be called when the storage is no longer needed
+        to ensure proper cleanup of database resources.
+        """
+        try:
+            if hasattr(self, "engine") and self.engine:
+                self.engine.dispose()
+                logger.debug("Database engine disposed successfully")
+        except Exception as e:
+            logger.warning(f"Error disposing database engine: {e}")
+
     def _malicious_package_model_to_entity(
         self, model: MaliciousPackageModel
     ) -> MaliciousPackage:

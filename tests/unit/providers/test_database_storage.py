@@ -8,9 +8,13 @@ from src.providers.storage.database_storage import DatabaseStorage
 
 @pytest.fixture
 def db_storage():
-    return DatabaseStorage(
+    """Create an in-memory database storage for testing with proper cleanup."""
+    storage = DatabaseStorage(
         database_path=":memory:", in_memory=True, connection_timeout=5.0
     )
+    yield storage
+    # Cleanup: dispose of the database engine to prevent resource warnings
+    storage.close()
 
 
 @pytest.fixture
