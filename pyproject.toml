@@ -2,6 +2,13 @@
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
 [project]
 name = "malifiscan"
 version = "0.14"
@@ -55,7 +62,7 @@ dev = [
 ]
 
 [project.scripts]
-malifiscan = "cli:main"
+malifiscan = "cli:cli_entry_point"
 
 [dependency-groups]
 dev = [

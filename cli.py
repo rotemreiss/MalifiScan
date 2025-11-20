@@ -2090,5 +2090,10 @@ Examples:
         sys.exit(1)
 
 
+def cli_entry_point():
+    """Entry point for the installed malifiscan command."""
+    asyncio.run(main())
+
+
 if __name__ == "__main__":
     asyncio.run(main())
