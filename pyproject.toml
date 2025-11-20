@@ -11,7 +11,7 @@ include = ["src*"]
 
 [project]
 name = "malifiscan"
-version = "0.14"
+version = "0.14.1"
 description = "A security tool that detects malicious packages from external vulnerability feeds and searches for them in your package registries or artifact repositories."
 authors = [
     {name = "Security Team", email = "security@example.com"}
