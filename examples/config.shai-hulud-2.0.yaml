@@ -1,6 +1,6 @@
 packages_feed:
   enabled: true
-  type: memoryv
+  type: memory
   config:
     timeout_seconds: 5
     max_retries: 1
