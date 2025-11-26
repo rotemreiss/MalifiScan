@@ -23,7 +23,10 @@ class DataManagementUseCase:
         self.logger = logging.getLogger(__name__)
 
     async def fetch_osv_packages(
-        self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48
+        self,
+        ecosystem: Optional[str] = None,
+        limit: Optional[int] = None,
+        hours: int = 48,
     ) -> Dict[str, Any]:
         """
         Fetch fresh malicious packages from OSV feed.
@@ -41,21 +44,16 @@ class DataManagementUseCase:
                 f"Fetching OSV packages data (ecosystem: {ecosystem}, limit: {limit}, hours: {hours})"
             )
 
-            # Fetch fresh data from OSV with limit and time filter
+            # Build ecosystems list for feed
+            ecosystems = [ecosystem] if ecosystem else None
+
+            # Fetch fresh data from OSV with limit, time filter, and ecosystem filter
             packages = await self.packages_feed.fetch_malicious_packages(
-                max_packages=limit, hours=hours
+                max_packages=limit, hours=hours, ecosystems=ecosystems
             )
 
             # Get cache statistics
             cache_stats = self.packages_feed.get_cache_stats()
-
-            # Filter by ecosystem if specified
-            if ecosystem:
-                packages = [
-                    pkg
-                    for pkg in packages
-                    if pkg.ecosystem.lower() == ecosystem.lower()
-                ]
 
             # Create ecosystem summary
             ecosystems = {}

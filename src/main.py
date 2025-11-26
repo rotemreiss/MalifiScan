@@ -426,14 +426,17 @@ class SecurityScannerApp:
             return {"success": False, "error": str(e), "details": None}
 
     async def fetch_packages_feed_data(
-        self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48
+        self,
+        ecosystem: Optional[str] = None,
+        limit: Optional[int] = None,
+        hours: int = 48,
     ) -> dict:
         """
         Fetch fresh malicious packages from packages feed.
 
         Args:
             ecosystem: Filter by ecosystem
-            limit: Maximum number of packages to fetch
+            limit: Maximum number of packages to fetch (None for all)
             hours: Fetch packages modified within the last N hours
 
         Returns:
