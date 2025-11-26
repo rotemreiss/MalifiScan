@@ -133,10 +133,10 @@ class TestDataManagementUseCase:
         assert len(result["packages"]) == 3
         assert result["total_packages"] == 3
         assert result["ecosystems"] == {"PyPI": 2, "npm": 1}
-        assert result["filter_info"]["limit"] == 100
+        assert result["filter_info"]["limit"] is None
         assert result["filter_info"]["hours"] == 48
         mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
-            max_packages=100, hours=48
+            max_packages=None, hours=48, ecosystems=None
         )
 
     @pytest.mark.asyncio
@@ -144,9 +144,11 @@ class TestDataManagementUseCase:
         self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
         """Test fetching OSV packages with ecosystem filter."""
-        mock_packages_feed.fetch_malicious_packages.return_value = (
-            sample_malicious_packages
-        )
+        # Mock should return only the requested ecosystem's packages
+        npm_packages = [
+            pkg for pkg in sample_malicious_packages if pkg.ecosystem == "npm"
+        ]
+        mock_packages_feed.fetch_malicious_packages.return_value = npm_packages
 
         result = await data_management_use_case.fetch_osv_packages(ecosystem="npm")
 
@@ -155,6 +157,11 @@ class TestDataManagementUseCase:
         assert result["total_packages"] == 1
         assert result["ecosystems"] == {"npm": 1}
         assert result["filter_info"]["ecosystem"] == "npm"
+
+        # Verify the feed was called with ecosystem filter
+        mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
+            max_packages=None, hours=48, ecosystems=["npm"]
+        )
 
         # Verify only npm packages are returned
         for pkg in result["packages"]:
@@ -165,9 +172,11 @@ class TestDataManagementUseCase:
         self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
         """Test fetching OSV packages with custom parameters."""
-        mock_packages_feed.fetch_malicious_packages.return_value = (
-            sample_malicious_packages
-        )
+        # Mock should return only the requested ecosystem's packages
+        pypi_packages = [
+            pkg for pkg in sample_malicious_packages if pkg.ecosystem == "PyPI"
+        ]
+        mock_packages_feed.fetch_malicious_packages.return_value = pypi_packages
 
         result = await data_management_use_case.fetch_osv_packages(
             ecosystem="PyPI", limit=50, hours=24
@@ -178,7 +187,7 @@ class TestDataManagementUseCase:
         assert result["filter_info"]["limit"] == 50
         assert result["filter_info"]["hours"] == 24
         mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
-            max_packages=50, hours=24
+            max_packages=50, hours=24, ecosystems=["PyPI"]
         )
 
     @pytest.mark.asyncio
@@ -203,14 +212,22 @@ class TestDataManagementUseCase:
         self, data_management_use_case, mock_packages_feed, sample_malicious_packages
     ):
         """Test that OSV ecosystem filtering is case insensitive."""
-        mock_packages_feed.fetch_malicious_packages.return_value = (
-            sample_malicious_packages
-        )
+        # Mock should return only npm packages (ecosystem filter is handled by feed now)
+        npm_packages = [
+            pkg for pkg in sample_malicious_packages if pkg.ecosystem == "npm"
+        ]
+        mock_packages_feed.fetch_malicious_packages.return_value = npm_packages
 
         result = await data_management_use_case.fetch_osv_packages(ecosystem="NPM")
 
         assert result["success"] is True
         assert result["total_packages"] == 1
+
+        # Verify the feed was called with the ecosystem (feed handles case sensitivity)
+        mock_packages_feed.fetch_malicious_packages.assert_called_once_with(
+            max_packages=None, hours=48, ecosystems=["NPM"]
+        )
+
         # Should match "npm" packages despite uppercase input
         for pkg in result["packages"]:
             assert pkg.ecosystem == "npm"

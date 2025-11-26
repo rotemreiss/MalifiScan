@@ -1247,7 +1247,10 @@ class SecurityScannerCLI:
             return False
 
     async def fetch_feed_packages(
-        self, ecosystem: Optional[str] = None, limit: int = 100, hours: int = 48
+        self,
+        ecosystem: Optional[str] = None,
+        limit: Optional[int] = None,
+        hours: int = 48,
     ) -> bool:
         """Fetch fresh malicious packages from the packages feed."""
         try:
@@ -1965,7 +1968,11 @@ Examples:
         "--ecosystem", "-e", type=str, help="Filter by ecosystem (npm, pypi, etc.)"
     )
     fetch_parser.add_argument(
-        "--limit", "-l", type=int, default=100, help="Number of packages to show"
+        "--limit",
+        "-l",
+        type=int,
+        default=None,
+        help="Maximum number of packages to fetch (default: no limit)",
     )
     fetch_parser.add_argument(
         "--hours",
