@@ -118,11 +118,7 @@ class SecurityAnalysisUseCase:
             self.logger.debug(
                 "Checking packages against registry with wildcard compression"
             )
-            registry_name = (
-                self.registry_service.name
-                if hasattr(self.registry_service, "name")
-                else "Unknown"
-            )
+            registry_name = self.registry_service.get_registry_name()
             match_builder = RegistryPackageMatchBuilder(registry_name=registry_name)
 
             if progress_callback:
@@ -964,12 +960,18 @@ class SecurityAnalysisUseCase:
             )
 
             if registry_results:
-                # Extract versions from registry results
-                registry_versions = [
-                    result.get("version", "")
-                    for result in registry_results
-                    if result.get("version")
-                ]
+                # Extract versions from registry results and deduplicate
+                # (same version can appear in multiple repositories)
+                # Sort to ensure consistent ordering
+                registry_versions = sorted(
+                    set(
+                        [
+                            result.get("version", "")
+                            for result in registry_results
+                            if result.get("version")
+                        ]
+                    )
+                )
                 malicious_versions = (
                     malicious_pkg.affected_versions
                     if hasattr(malicious_pkg, "affected_versions")

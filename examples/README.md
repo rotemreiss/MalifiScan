@@ -20,5 +20,5 @@ An example configuration that uses a hard-coded list of malicious packages inste
 
 **Usage**:
 ```bash
-uv run python cli.py scan --config examples/config.shai-hulud-2.0.yaml
+uv run python cli.py --config examples/config.shai-hulud-2.0.yaml scan crossref
 ```

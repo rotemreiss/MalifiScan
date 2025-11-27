@@ -1490,7 +1490,14 @@ class JFrogRegistry(PackagesRegistryService):
                         )
 
             # Process and format all results
-            formatted_results = []
+            logger.info(
+                f"[DEBUG] Processing {len(all_results)} wildcard results for ecosystem: {ecosystem}"
+            )
+
+            # Use a dict to deduplicate by (package_name, version) tuples
+            # This ensures we only keep one result per unique package+version combination
+            unique_results = {}
+
             for item in all_results:
                 version = ""
                 name = item.get("name", "")
@@ -1538,10 +1545,18 @@ class JFrogRegistry(PackagesRegistryService):
                     "version": version,
                 }
 
-                formatted_results.append(result_item)
+                # Use (package_name, version) as key to deduplicate
+                # Only store if version is not empty (skip package.json files)
+                if version:
+                    dedup_key = (package_name, version)
+                    if dedup_key not in unique_results:
+                        unique_results[dedup_key] = result_item
+
+            # Convert back to list
+            formatted_results = list(unique_results.values())
 
             logger.debug(
-                f"Completed wildcard search for '{prefix}*' in {ecosystem}: found {len(formatted_results)} results"
+                f"Completed wildcard search for '{prefix}*' in {ecosystem}: found {len(formatted_results)} unique results (deduplicated from {len(all_results)})"
             )
             return formatted_results
 
