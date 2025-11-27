@@ -962,7 +962,8 @@ class SecurityAnalysisUseCase:
             if registry_results:
                 # Extract versions from registry results and deduplicate
                 # (same version can appear in multiple repositories)
-                registry_versions = list(
+                # Sort to ensure consistent ordering
+                registry_versions = sorted(
                     set(
                         [
                             result.get("version", "")
